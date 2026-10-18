@@ -4,7 +4,7 @@
     <default-locale>en_US</default-locale>
     <name resource-id="name"/>
     <description>Geometry retrieval diagnostic for Tableau Viz Extensions.</description>
-    <author name="Chasoso" website="https://github.com/Chasoso/tableau-3d-viz-extension"/>
+    <author name="Chasoso" email="128229844+Chasoso@users.noreply.github.com" website="https://github.com/Chasoso/tableau-3d-viz-extension"/>
     <min-api-version>1.17</min-api-version>
     <source-location>
       <url>http://localhost:8765/extension/geometry-diagnostic.html</url>

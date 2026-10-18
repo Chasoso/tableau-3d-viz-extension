@@ -13,6 +13,9 @@ if (!manifest.startsWith('<?xml version="1.0" encoding="utf-8"?>')) {
 if (!extension || !extension['@_id'] || !extension['@_extension-version']) {
   throw new Error('worksheet-extension id and extension-version are required.');
 }
+if (!extension.author?.['@_name'] || !extension.author?.['@_email'] || !extension.author?.['@_website']) {
+  throw new Error('author name, email, and website are required.');
+}
 if (url !== 'http://localhost:8765/extension/geometry-diagnostic.html') {
   throw new Error(`Unexpected source location: ${url}`);
 }
