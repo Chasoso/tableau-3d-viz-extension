@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { XMLParser } from 'fast-xml-parser';
 
 const manifest = await readFile('extension/geometry-diagnostic.trex', 'utf8');
+const compiledScript = await readFile('extension/geometry-diagnostic.js', 'utf8');
 const parsed = new XMLParser({ ignoreAttributes: false }).parse(manifest);
 const extension = parsed.manifest['worksheet-extension'];
 const url = extension['source-location'].url;
@@ -12,6 +13,9 @@ if (!manifest.startsWith('<?xml version="1.0" encoding="utf-8"?>')) {
 }
 if (!extension || !extension['@_id'] || !extension['@_extension-version']) {
   throw new Error('worksheet-extension id and extension-version are required.');
+}
+if (compiledScript.includes('require(')) {
+  throw new Error('The browser bundle must not contain CommonJS require().');
 }
 if (!extension.author?.['@_name'] || !extension.author?.['@_email'] || !extension.author?.['@_website']) {
   throw new Error('author name, email, and website are required.');

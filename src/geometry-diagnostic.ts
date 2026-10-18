@@ -1,9 +1,9 @@
-import '@tableau/extensions-api-types';
+/// <reference types="@tableau/extensions-api-types" />
 import {
   formatDiagnosticValue,
   sampleDataValue,
   truncate
-} from './diagnostic-format';
+} from './diagnostic-format.js';
 
 type DataTableLike = {
   columns: Array<{
@@ -156,6 +156,10 @@ window.addEventListener('load', () => {
   element<HTMLButtonElement>('refresh').addEventListener('click', () => {
     void refresh();
   });
+  if (typeof tableau === 'undefined' || !tableau.extensions) {
+    setStatus('Tableau Extensions API library was not loaded.', true);
+    return;
+  }
   void tableau.extensions.initializeAsync().then(refresh).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     setStatus(`Initialization failed: ${message}`, true);

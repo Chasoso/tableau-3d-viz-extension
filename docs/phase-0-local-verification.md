@@ -45,6 +45,10 @@ npm run serve
 6. 診断画面で初期取得の完了を待ち、`summary`、`underlyingTables`、`visualSpecification`のJSONを保存する。Refresh diagnosticで再取得できる。
 7. JSON内で、Geometryに対応する列の`dataType`、値の型、頂点・リング・穴・MultiPolygonの情報、`id`/`elevation`との対応を確認する。
 
+## 初期化が完了しない場合
+
+画面が「Initializing Tableau Extensions API…」のまま変わらない場合は、Geometryの取得可否を確認する段階まで到達していない。古いビルドを配信していないことを確認し、`npm run build`後にサーバーを再起動してから、Tableauで拡張を削除して同じ`.trex`を再追加する。生成JSはブラウザ用ES moduleであり、`require(...)`を含んではならない。`npm run check`がこの条件を検査する。
+
 ## 判定と未検証事項
 
 実機のJSON証跡がない状態は `NOT VERIFIED` とする。`spatial`列が表示されたことだけでは、頂点・リング・穴・MultiPolygonを完全に復元できたことを意味しない。完全性は、入力fixtureとの照合結果を [レポートテンプレート](reports/SPEC-001-geometry-retrieval-report.md) に記録してから判定する。

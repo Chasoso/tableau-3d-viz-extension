@@ -1,6 +1,7 @@
 {
   "name": "tableau-3d-viz-geometry-probe",
   "private": true,
+  "type": "module",
   "version": "0.1.0",
   "description": "Phase 0 diagnostic Viz Extension for inspecting Tableau worksheet data and spatial columns.",
   "scripts": {
