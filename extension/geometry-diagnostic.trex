@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <worksheet-extension id="com.chasoso.tableau3dviz.geometry-diagnostic" extension-version="0.1.0">
+    <default-locale>en_US</default-locale>
+    <name resource-id="name"/>
+    <description>Geometry retrieval diagnostic for Tableau Viz Extensions.</description>
+    <author name="Chasoso" website="https://github.com/Chasoso/tableau-3d-viz-extension"/>
+    <min-api-version>1.17</min-api-version>
+    <source-location>
+      <url>http://localhost:8765/extension/geometry-diagnostic.html</url>
+    </source-location>
+    <icon/>
+    <permissions>
+      <permission>full data</permission>
+    </permissions>
+    <encoding id="id">
+      <display-name>ID</display-name>
+      <data-spec>
+        <data-type>string</data-type>
+      </data-spec>
+      <fields max-count="1"/>
+      <encoding-icon token="text"/>
+    </encoding>
+    <encoding id="elevation">
+      <display-name>Elevation</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <encoding-icon token="letter-z"/>
+    </encoding>
+  </worksheet-extension>
+  <resources>
+    <resource id="name">
+      <text locale="en_US">Geometry Retrieval Diagnostic</text>
+    </resource>
+  </resources>
+</manifest>

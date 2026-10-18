@@ -34,13 +34,13 @@ Tableau Viz Extension APIを使って、Shapefile由来のPolygon / MultiPolygon
 - API・Encoding・フィールド指定方法
 - 取得した値の要約と証跡へのリンク
 - 欠落、変換、エラー、再現性の有無
-- 判定（PASS / PARTIAL / FAIL / NOT RUN）
+- 判定（PASS / PARTIAL / FAIL / NOT VERIFIED）
 
 ## 判定基準
 
 - **PASS**: 対象形状の座標、リング、穴、MultiPolygon構造、属性対応を、実装に必要な範囲で再現可能に取得できた。
 - **PARTIAL**: 一部の形状または構造だけ取得できた。取得できない条件と代替案の評価が必要である。
 - **FAIL**: 必要なGeometryを取得できない、または対応を再現できない。直接取得方式は採用せず、代替入力を評価する。
-- **NOT RUN**: 実機・必要環境が未準備で、検証を実施していない。可否の判断材料にはしない。
+- **NOT VERIFIED**: 実機・必要環境が未準備、または完全性を示す証跡がなく、検証結果を確定できない。PASSの代わりにはしない。
 
 判定は証跡に基づいて行う。Metadataが見えること、ShapefileをTableauで開けること、画面に地図が表示されることだけでは、Geometry取得のPASSとはしない。

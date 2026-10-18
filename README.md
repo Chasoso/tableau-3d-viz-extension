@@ -80,6 +80,8 @@ AWSは静的アセットの配信にのみ使用する予定です。Lambda、AP
 - [Architecture](docs/architecture.md) — 現時点の候補構成と未決定事項
 - [Development workflow](docs/development-workflow.md) — IssueからPRまでの作業手順
 - [Phase 0 Geometry retrieval specification](docs/specifications/SPEC-001-geometry-retrieval.md) — 実機検証の手順と判定基準
+- [Phase 0 local verification](docs/phase-0-local-verification.md) — 診断拡張のビルド・fixture生成・Tableau Desktop操作
+- [SPEC-001 report template](docs/reports/SPEC-001-geometry-retrieval-report.md) — 実機証跡と判定の記録用テンプレート
 - [Repository development rules](AGENTS.md) — 作業ツリー、検証、コミット、PRのルール
 
 ## References

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Geometry Retrieval Diagnostic</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { margin: 1rem; }
+      button { padding: 0.45rem 0.8rem; }
+      pre { max-height: 70vh; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+      [data-state="error"] { color: #b00020; }
+    </style>
+  </head>
+  <body>
+    <h1>Geometry Retrieval Diagnostic</h1>
+    <p>This page reports Tableau API metadata and returned values. It does not draw 3D geometry.</p>
+    <button id="refresh" type="button">Refresh diagnostic</button>
+    <p id="status" data-state="ok">Initializing Tableau Extensions API…</p>
+    <p id="spatial-count">No result yet.</p>
+    <pre id="output" aria-live="polite"></pre>
+    <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api@v1.17.0/lib/tableau.extensions.1.latest.js"></script>
+    <script src="./geometry-diagnostic.js"></script>
+  </body>
+</html>

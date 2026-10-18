@@ -1,0 +1,21 @@
+{
+  "name": "tableau-3d-viz-geometry-probe",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Phase 0 diagnostic Viz Extension for inspecting Tableau worksheet data and spatial columns.",
+  "scripts": {
+    "build": "tsc",
+    "check": "npm run build && npm test && node scripts/validate-manifest.mjs",
+    "fixture": "node scripts/generate-fixture.mjs",
+    "lint": "tsc --noEmit",
+    "serve": "http-server . -p 8765 -c-1",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@tableau/extensions-api-types": "1.17.0",
+    "fast-xml-parser": "^5.2.5",
+    "http-server": "^14.1.1",
+    "@mapbox/shp-write": "^0.4.3",
+    "typescript": "^5.7.3"
+  }
+}
