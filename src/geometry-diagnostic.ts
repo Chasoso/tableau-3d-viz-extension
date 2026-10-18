@@ -35,6 +35,22 @@ function setStatus(message: string, isError = false): void {
   status.dataset.state = isError ? 'error' : 'ok';
 }
 
+type DiagnosticResult<T> =
+  | { status: 'ok'; value: T }
+  | { status: 'error'; error: string };
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function capture<T>(operation: () => Promise<T>): Promise<DiagnosticResult<T>> {
+  try {
+    return { status: 'ok', value: await operation() };
+  } catch (error) {
+    return { status: 'error', error: errorText(error) };
+  }
+}
+
 function summarizeTable(table: DataTableLike) {
   return {
     name: table.isSummaryData ? 'summary' : 'underlying',
@@ -89,45 +105,73 @@ async function collectDiagnostic() {
     throw new Error('The extension is not running as a Viz Extension worksheet.');
   }
   const worksheet = worksheetContent.worksheet;
-  const visualSpecification = await worksheet.getVisualSpecificationAsync();
-  const summaryReader = await worksheet.getSummaryDataReaderAsync(100);
-  const summaryTable = await readAllPages(summaryReader);
-  const logicalTables = await worksheet.getUnderlyingTablesAsync();
-  const underlyingTables = [];
+  const visualSpecification = await capture(
+    () => worksheet.getVisualSpecificationAsync()
+  );
+  const summary = await capture(async () => {
+    const summaryReader = await worksheet.getSummaryDataReaderAsync(100);
+    return summarizeTable(await readAllPages(summaryReader));
+  });
+  const underlyingTables = await capture(async () => {
+    const logicalTables = await worksheet.getUnderlyingTablesAsync();
+    if (!Array.isArray(logicalTables)) {
+      throw new Error('getUnderlyingTablesAsync returned a non-array value.');
+    }
+    const tables = [];
+    for (const logicalTable of logicalTables) {
+      const reader = await worksheet.getUnderlyingTableDataReaderAsync(
+        logicalTable.id,
+        100,
+        { includeAllColumns: true }
+      );
+      tables.push({
+        logicalTableId: logicalTable.id,
+        table: summarizeTable(await readAllPages(reader))
+      });
+    }
+    return tables;
+  });
+  const dataSources = await capture(() => worksheet.getDataSourcesAsync());
 
-  for (const logicalTable of logicalTables) {
-    const reader = await worksheet.getUnderlyingTableDataReaderAsync(
-      logicalTable.id,
-      100,
-      { includeAllColumns: true }
-    );
-    underlyingTables.push({
-      logicalTableId: logicalTable.id,
-      table: summarizeTable(await readAllPages(reader))
-    });
-  }
+  const visualSpecificationOutput = visualSpecification.status === 'error'
+    ? visualSpecification
+    : {
+        status: 'ok' as const,
+        activeMarksSpecificationIndex: visualSpecification.value.activeMarksSpecificationIndex,
+        encodings: (Array.isArray(visualSpecification.value.marksSpecifications)
+          ? visualSpecification.value.marksSpecifications
+          : []).flatMap((marks) =>
+          (Array.isArray(marks.encodings) ? marks.encodings : []).map((encoding) => ({
+            id: encoding.id,
+            type: formatDiagnosticValue(encoding.type),
+            fieldName: encoding.field?.name,
+            fieldId: encoding.field?.fieldId
+          }))
+        )
+      };
 
-  const dataSources = await worksheet.getDataSourcesAsync();
+  const dataSourcesOutput = dataSources.status === 'error'
+    ? dataSources
+    : {
+        status: 'ok' as const,
+        value: (Array.isArray(dataSources.value) ? dataSources.value : []).map((dataSource) => ({
+          id: dataSource?.id,
+          name: dataSource?.name,
+          fields: Array.isArray(dataSource?.fields)
+            ? dataSource.fields.map((field) => field?.name)
+            : null,
+          note: Array.isArray(dataSource?.fields)
+            ? undefined
+            : 'The API returned this data source without a fields array.'
+        }))
+      };
+
   return {
     collectedAt: new Date().toISOString(),
     note: 'Diagnostic output only. Geometry retrieval is not considered verified by this page.',
-    visualSpecification: {
-      activeMarksSpecificationIndex: visualSpecification.activeMarksSpecificationIndex,
-      encodings: visualSpecification.marksSpecifications.flatMap((marks) =>
-        marks.encodings.map((encoding) => ({
-          id: encoding.id,
-          type: formatDiagnosticValue(encoding.type),
-          fieldName: encoding.field.name,
-          fieldId: encoding.field.fieldId
-        }))
-      )
-    },
-    dataSources: dataSources.map((dataSource) => ({
-      id: dataSource.id,
-      name: dataSource.name,
-      fields: dataSource.fields.map((field) => field.name)
-    })),
-    summary: summarizeTable(summaryTable),
+    visualSpecification: visualSpecificationOutput,
+    dataSources: dataSourcesOutput,
+    summary,
     underlyingTables
   };
 }
@@ -160,8 +204,17 @@ window.addEventListener('load', () => {
     setStatus('Tableau Extensions API library was not loaded.', true);
     return;
   }
-  void tableau.extensions.initializeAsync().then(refresh).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    setStatus(`Initialization failed: ${message}`, true);
-  });
+  void tableau.extensions.initializeAsync()
+    .then(() => {
+      const worksheet = tableau.extensions.worksheetContent?.worksheet;
+      worksheet?.addEventListener(
+        tableau.TableauEventType.SummaryDataChanged,
+        () => void refresh()
+      );
+      return refresh();
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`Initialization failed: ${message}`, true);
+    });
 });
