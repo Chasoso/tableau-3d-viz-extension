@@ -74,6 +74,14 @@ AWSは静的アセットの配信にのみ使用する予定です。Lambda、AP
 
 実装・インストール手順・デモ環境は今後追加します。現段階では完成済みの拡張機能や動作保証はありません。
 
+## Project documentation
+
+- [Requirements and scope](docs/requirements.md) — MVP、非目標、受け入れ基準
+- [Architecture](docs/architecture.md) — 現時点の候補構成と未決定事項
+- [Development workflow](docs/development-workflow.md) — IssueからPRまでの作業手順
+- [Phase 0 Geometry retrieval specification](docs/specifications/SPEC-001-geometry-retrieval.md) — 実機検証の手順と判定基準
+- [Repository development rules](AGENTS.md) — 作業ツリー、検証、コミット、PRのルール
+
 ## References
 
 - [Tableau Viz Extensions overview](https://tableau.github.io/extensions-api/docs/vizext/trex_viz_overview/)
