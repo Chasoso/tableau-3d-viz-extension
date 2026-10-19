@@ -45,3 +45,5 @@ Manual Tableau Desktop verification remains required for:
 5. Confirming interaction behavior and resource cleanup after removing/re-adding the extension.
 
 The attached HTML prototype was not present in the repository; its interaction model was used as the UI reference for this implementation.
+
+If the extension remains on `Initializing Tableau Extensions API…`, verify that the official Tableau Extensions API script is reachable from the Tableau Desktop environment. The extension now reports a missing API script or a 15-second initialization timeout directly in the status area.

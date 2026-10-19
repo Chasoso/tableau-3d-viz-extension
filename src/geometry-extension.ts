@@ -118,6 +118,23 @@ window.addEventListener('beforeunload', () => { controls.dispose(); viewer.dispo
 resize();
 animate();
 
-void tableau.extensions.initializeAsync()
-  .then(() => loadTableauData())
-  .catch((error: unknown) => setStatus(error instanceof Error ? error.message : String(error), true));
+async function initializeExtension(): Promise<void> {
+  if (typeof tableau === 'undefined' || !tableau.extensions) {
+    setStatus('Tableau Extensions API library was not loaded. Check network access to the official Tableau API script.', true);
+    return;
+  }
+  setStatus('Connecting to Tableau Extensions API…');
+  try {
+    await Promise.race([
+      tableau.extensions.initializeAsync(),
+      new Promise<never>((_, reject) => {
+        window.setTimeout(() => reject(new Error('Tableau Extensions API initialization timed out after 15 seconds.')), 15_000);
+      })
+    ]);
+    await loadTableauData();
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : String(error), true);
+  }
+}
+
+window.addEventListener('load', () => { void initializeExtension(); }, { once: true });
