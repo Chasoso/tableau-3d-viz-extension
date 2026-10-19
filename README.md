@@ -82,6 +82,7 @@ AWSは静的アセットの配信にのみ使用する予定です。Lambda、AP
 - [Phase 0 Geometry retrieval specification](docs/specifications/SPEC-001-geometry-retrieval.md) — 実機検証の手順と判定基準
 - [Phase 0 local verification](docs/phase-0-local-verification.md) — 診断拡張のビルド・fixture生成・Tableau Desktop操作
 - [SPEC-001 report template](docs/reports/SPEC-001-geometry-retrieval-report.md) — 実機証跡と判定の記録用テンプレート
+- [ADR-001 Geometry supply](docs/adr/ADR-001-geometry-supply.md) — 直接取得を第一候補とする条件付き設計判断
 - [Repository development rules](AGENTS.md) — 作業ツリー、検証、コミット、PRのルール
 
 ## References

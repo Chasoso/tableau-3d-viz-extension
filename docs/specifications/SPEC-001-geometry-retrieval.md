@@ -44,3 +44,5 @@ Tableau Viz Extension APIを使って、Shapefile由来のPolygon / MultiPolygon
 - **NOT VERIFIED**: 実機・必要環境が未準備、または完全性を示す証跡がなく、検証結果を確定できない。PASSの代わりにはしない。
 
 判定は証跡に基づいて行う。Metadataが見えること、ShapefileをTableauで開けること、画面に地図が表示されることだけでは、Geometry取得のPASSとはしない。
+
+Issue #3時点の実測記録は[検証レポート](../reports/SPEC-001-geometry-retrieval-report.md)に反映する。Geometry値の返却自体が確認できても、全頂点・リング・穴・MultiPolygonパートを機械的に照合できる証跡がない場合は`PARTIAL`とし、`PASS`にはしない。供給方式とIssue #4の責務境界は[ADR-001](../adr/ADR-001-geometry-supply.md)に記録する。
