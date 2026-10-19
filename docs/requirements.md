@@ -13,7 +13,7 @@ Tableau Viz Extensionとして、Tableauに接続した空間データを3Dで�
 - Three.jsは候補レンダリングエンジンの一つとする
 - 静的アセットは将来、HTTPSで配信する
 
-MVPの実装開始条件は、Phase 0でGeometry取得経路を検証し、その結果に基づいて実現方式を決めることである。
+MVPの実装開始条件は、Phase 0でGeometry取得経路を検証し、その結果に基づいて実現方式を決めることである。Issue #3では、実機でGeometry値が返ることを確認したため、Issue #4ではTableauからの直接取得を第一候補として検証する。ただし完全復元の証跡が不足しているため、任意のShapefile対応を確定したものとは扱わない。
 
 ## 非目標
 
@@ -25,7 +25,7 @@ MVPの実装開始条件は、Phase 0でGeometry取得経路を検証し、そ�
 
 ## 未確定事項
 
-Viz Extension APIのカスタムEncoding等を通じて、Geometryの型、座標、リング、穴、MultiPolygonの構造を欠落なく取得できるかは未検証である。取得できない場合は、GeoJSON等への事前変換を含む代替案を評価する。結果が出るまで、取得方式を確定しない。
+Viz Extension APIからGeometry値が返ることは検証用fixtureで観察されたが、型・座標・リング・穴・MultiPolygonの構造を欠落なく復元できること、返却値形式が安定していること、任意のShapefileへ適用できることは未検証である。取得値はIssue #4で中間表現へ変換し、完全性を照合する。直接取得が要件を満たさない場合はGeoJSON等への事前変換を含む代替案を再評価する。
 
 ## 受け入れ基準
 
