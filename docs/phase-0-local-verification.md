@@ -33,7 +33,7 @@ npm run fixture
 npm run serve
 ```
 
-`npm run fixture` は `test-data/geometry-fixture.geojson` から、EPSG:4326のPolygon、穴ありPolygon、MultiPolygon、`id`、`elevation`を含む `test-data/generated/geometry-fixture.zip` を生成する。ZIPを展開してShapefile一式を使用する。生成物はGit管理対象外である。
+`npm run fixture` は `test-data/geometry-fixture.geojson` から、EPSG:4326の3レコード（単純なPolygon、穴ありPolygon、2パートのMultiPolygon）、`id`、`elevation`を含む `test-data/generated/geometry-fixture.zip` を生成する。Shapefileは形状タイプを混在できないため、生成時にはPolygonを単一パートのMultiPolygon表現へ正規化する。これにより、1つのPolygonレイヤー内に3レコードを保持し、リング・穴・複数パートの差を検証できる。ZIPを展開してShapefile一式を使用する。生成物はGit管理対象外である。
 
 ## Tableau Desktopでの操作
 

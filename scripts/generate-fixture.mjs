@@ -2,9 +2,27 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { zip } from '@mapbox/shp-write';
 
 const geojson = JSON.parse(await readFile('test-data/geometry-fixture.geojson', 'utf8'));
-const archive = await zip(geojson, {
+// A Shapefile has one homogeneous shape type. Normalize Polygon features to
+// single-part MultiPolygon geometries before writing so all three fixture
+// records are preserved in the generated polygon layer.
+const shapefileGeojson = {
+  ...geojson,
+  features: geojson.features.map((feature) =>
+    feature.geometry.type === 'Polygon'
+      ? {
+          ...feature,
+          geometry: {
+            type: 'MultiPolygon',
+            coordinates: [feature.geometry.coordinates]
+          }
+        }
+      : feature
+  )
+};
+
+const archive = await zip(shapefileGeojson, {
   folder: 'geometry-fixture',
-  types: { polygon: 'geometry-fixture', polyline: 'geometry-fixture', point: 'geometry-fixture' }
+  types: { polygon: 'geometry-fixture' }
 });
 
 await mkdir('test-data/generated', { recursive: true });
