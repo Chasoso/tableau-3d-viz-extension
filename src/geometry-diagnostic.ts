@@ -192,7 +192,7 @@ async function collectDiagnostic() {
 function render(result: unknown): void {
   const output = element<HTMLPreElement>('output');
   output.textContent = JSON.stringify(result, null, 2);
-  const spatialColumns = JSON.stringify(result).match(/"dataType": "spatial"/g)?.length ?? 0;
+  const spatialColumns = JSON.stringify(result).match(/"dataType"\s*:\s*"spatial"/g)?.length ?? 0;
   element<HTMLParagraphElement>('spatial-count').textContent =
     `Detected spatial columns in the returned metadata: ${spatialColumns}. This is observation only.`;
 }
