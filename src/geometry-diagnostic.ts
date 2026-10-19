@@ -6,14 +6,14 @@ import {
 } from './diagnostic-format.js';
 
 type DataTableLike = {
-  columns: Array<{
+  columns?: Array<{
     fieldName: string;
     fieldId: string;
     dataType: string;
     isReferenced: boolean;
     index: number;
   }>;
-  data: Array<Array<{
+  data?: Array<Array<{
     value?: unknown;
     nativeValue?: unknown;
     formattedValue?: string;
@@ -52,16 +52,24 @@ async function capture<T>(operation: () => Promise<T>): Promise<DiagnosticResult
 }
 
 function summarizeTable(table: DataTableLike) {
+  const columns = Array.isArray(table.columns) ? table.columns : [];
+  const rows = Array.isArray(table.data) ? table.data : [];
+  const warnings = [];
+  if (!Array.isArray(table.columns)) warnings.push('columns was not returned');
+  if (!Array.isArray(table.data)) warnings.push('data was not returned');
+
   return {
     name: table.isSummaryData ? 'summary' : 'underlying',
     totalRowCount: table.totalRowCount,
     isTotalRowCountLimited: table.isTotalRowCountLimited ?? false,
-    columns: table.columns.map((column) => ({
+    returnedKeys: Object.keys(table),
+    warnings,
+    columns: columns.map((column) => ({
       fieldName: column.fieldName,
       fieldId: column.fieldId,
       dataType: column.dataType,
       isReferenced: column.isReferenced,
-      samples: table.data.slice(0, 3).map((row) =>
+      samples: rows.slice(0, 3).map((row) =>
         sampleDataValue(row[column.index])
       )
     }))
@@ -76,7 +84,8 @@ async function readAllPages(reader: {
   const pages: DataTableLike[] = [];
   try {
     for (let pageNumber = 0; pageNumber < reader.pageCount; pageNumber += 1) {
-      pages.push(await reader.getPageAsync(pageNumber));
+      const page = await reader.getPageAsync(pageNumber);
+      if (page) pages.push(page);
     }
   } finally {
     await reader.releaseAsync();
@@ -93,8 +102,12 @@ async function readAllPages(reader: {
   }
   return {
     ...first,
-    data: pages.flatMap((page) => page.data),
-    totalRowCount: pages.reduce((total, page) => total + page.data.length, 0),
+    columns: Array.isArray(first.columns) ? first.columns : [],
+    data: pages.flatMap((page) => Array.isArray(page.data) ? page.data : []),
+    totalRowCount: pages.reduce(
+      (total, page) => total + (Array.isArray(page.data) ? page.data.length : 0),
+      0
+    ),
     isTotalRowCountLimited: pages.some((page) => page.isTotalRowCountLimited)
   };
 }
