@@ -4,8 +4,8 @@ A work-in-progress [Tableau Viz Extension](https://tableau.github.io/extensions-
 
 Tableauで読み込んだ空間データを、ワークシート上で回転・ズーム・パンできる3Dマップとして表示することを目指すプロジェクトです。生成AIを**開発に活用**して、Tableau標準では難しい表現を追加できることを示します。拡張機能にAI機能を組み込むことは目的ではありません。
 
-> **Status: Planning / Technical feasibility investigation**  
-> 現在は構想・技術検証段階です。ShapefileのGeometryをViz Extension API経由で復元できるかは**未検証**であり、Shapefileを読み込むだけで3D化できることは、まだ保証されていません。
+> **Status: Phase 1 prototype / Technical feasibility investigation**
+> Geometry取得診断とThree.js描画プロトタイプを提供しています。Tableauの任意のShapefileを追加変換なしで3D化できること、座標系・Geometry形式の完全互換性は、まだ保証されていません。
 
 ## Goal
 
@@ -43,14 +43,15 @@ TableauでShapefileを開けることと、Viz Extensionが**Polygonの頂点・
 
 調査結果が出るまで、Geometryの取得方式は確定しません。
 
-## Planned architecture
+## Current prototype architecture
 
 ```text
 Tableau Desktop / Tableau worksheet
   └── Viz Extension (.trex)
        └── Static web application (HTML / CSS / JavaScript)
             ├── Tableau Viz Extensions API
-            ├── Geometry adapter (subject to feasibility validation)
+            ├── Tableau Geometry source
+            ├── Geometry adapter (validated local-meter intermediate model)
             └── Three.js 3D renderer
 
 CloudFront (HTTPS)
@@ -72,7 +73,7 @@ AWSは静的アセットの配信にのみ使用する予定です。Lambda、AP
 
 ## Development status
 
-実装・インストール手順・デモ環境は今後追加します。現段階では完成済みの拡張機能や動作保証はありません。
+Phase 0の診断拡張と、Phase 1のThree.js描画プロトタイプを実装しています。Tableau Desktopでの実機動作、任意のShapefile対応、座標系と標高単位の自動判定は未検証です。
 
 ## Project documentation
 
@@ -83,6 +84,7 @@ AWSは静的アセットの配信にのみ使用する予定です。Lambda、AP
 - [Phase 0 local verification](docs/phase-0-local-verification.md) — 診断拡張のビルド・fixture生成・Tableau Desktop操作
 - [SPEC-001 report template](docs/reports/SPEC-001-geometry-retrieval-report.md) — 実機証跡と判定の記録用テンプレート
 - [ADR-001 Geometry supply](docs/adr/ADR-001-geometry-supply.md) — 直接取得を第一候補とする条件付き設計判断
+- [SPEC-002 3D rendering](docs/specifications/SPEC-002-3d-rendering.md) — Polygon / MultiPolygon描画、座標・高さ・操作仕様
 - [Repository development rules](AGENTS.md) — 作業ツリー、検証、コミット、PRのルール
 
 ## References

@@ -17,7 +17,7 @@ MVPの実装開始条件は、Phase 0でGeometry取得経路を検証し、そ�
 
 ## 非目標
 
-- 本Issueでの3Dレンダラー、Viz Extension、`.trex`、AWS環境の実装
+- Phase 0/開発基盤Issueでの3Dレンダラー、Viz Extension、`.trex`、AWS環境の実装
 - DEMからの滑らかな地形生成
 - Lambda、API Gateway、データベースなどのバックエンド
 - TableauデータのS3や外部APIへの自動送信
