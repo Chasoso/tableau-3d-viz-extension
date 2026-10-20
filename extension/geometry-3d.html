@@ -42,7 +42,7 @@
         <canvas id="scene" aria-label="3D geometry viewer"></canvas>
         <div class="inspect"><div class="label">Selected feature</div><div class="value" id="selected">Hover to inspect</div><div class="meta" id="elevation">No feature selected</div></div>
         <div class="toolbar"><button id="reset" type="button" title="Reset view">↺</button></div>
-        <div class="status" id="status" data-state="ok">Initializing Tableau Extensions API…</div>
+        <div class="status" id="status" data-state="ok">Loading extension…</div>
       </main>
       <footer class="bottom">
         <label class="control">Height <input id="scale" type="range" min="0.5" max="5" step="0.5" value="2"><strong id="scaleText">2.0×</strong></label>
@@ -52,6 +52,22 @@
       </footer>
     </div>
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api@v1.17.0/lib/tableau.extensions.1.latest.js"></script>
-    <script type="module" src="./geometry-extension.js"></script>
+    <script>
+      window.addEventListener('error', function (event) {
+        var status = document.getElementById('status');
+        if (status) {
+          status.dataset.state = 'error';
+          status.textContent = 'Extension script error: ' + (event.message || 'unknown JavaScript error');
+        }
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        var status = document.getElementById('status');
+        if (status) {
+          status.dataset.state = 'error';
+          status.textContent = 'Extension promise error: ' + String(event.reason || 'unknown error');
+        }
+      });
+    </script>
+    <script src="./geometry-extension.js"></script>
   </body>
 </html>

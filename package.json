@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "description": "Phase 0 diagnostic Viz Extension for inspecting Tableau worksheet data and spatial columns.",
   "scripts": {
-    "build": "tsc && esbuild src/geometry-extension.ts --bundle --format=esm --platform=browser --outfile=extension/geometry-extension.js",
+    "build": "tsc && esbuild src/geometry-extension.ts --bundle --format=iife --global-name=GeometryExtension --platform=browser --outfile=extension/geometry-extension.js",
     "check": "npm run build && npm test && node scripts/validate-manifest.mjs",
     "fixture": "node scripts/generate-fixture.mjs",
     "lint": "tsc --noEmit",

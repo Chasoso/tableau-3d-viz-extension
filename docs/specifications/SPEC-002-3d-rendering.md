@@ -46,4 +46,4 @@ Manual Tableau Desktop verification remains required for:
 
 The attached HTML prototype was not present in the repository; its interaction model was used as the UI reference for this implementation.
 
-If the extension remains on `Initializing Tableau Extensions API…`, verify that the official Tableau Extensions API script is reachable from the Tableau Desktop environment. The extension now reports a missing API script or a 15-second initialization timeout directly in the status area.
+The renderer is published as a dependency-bundled, classic IIFE script because Tableau Desktop's embedded WebView must load the extension entrypoint without relying on ES module loading or an import map. If the extension remains on `Loading extension…`, inspect the status area for a script error and verify that the served `extension/geometry-extension.js` is reachable. If it reaches `Connecting to Tableau Extensions API…`, verify that the official Tableau Extensions API script is reachable from the Tableau Desktop environment. The extension reports a missing API script or a 15-second initialization timeout directly in the status area.

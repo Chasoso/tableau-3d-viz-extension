@@ -137,4 +137,12 @@ async function initializeExtension(): Promise<void> {
   }
 }
 
-window.addEventListener('load', () => { void initializeExtension(); }, { once: true });
+let initializationStarted = false;
+function startInitialization(): void {
+  if (initializationStarted) return;
+  initializationStarted = true;
+  void initializeExtension();
+}
+
+startInitialization();
+window.addEventListener('load', startInitialization, { once: true });
