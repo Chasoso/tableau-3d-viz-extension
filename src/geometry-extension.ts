@@ -5,6 +5,8 @@ import { normalizeGeometryRows } from './geometry-adapter.js';
 import { GeometryRenderer } from './geometry-renderer.js';
 import type { NormalizedGeometry, RawGeometryRow, SourceCoordinateSystem } from './geometry-model.js';
 import { readTableauGeometryRows } from './tableau-geometry-source.js';
+import { formatWebGLInitializationError, initializeWebGLRenderer, type WebGLRendererLike } from './webgl-runtime.js';
+import { fitCameraAndSaveTarget, resetCamera } from './camera-view.js';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#scene');
 const status = document.querySelector<HTMLElement>('#status');
@@ -29,19 +31,16 @@ const crsSelect = crs;
 const edgesInput = edges;
 const resetButton = reset;
 
-const renderer = new THREE.WebGLRenderer({ canvas: sceneCanvas, antialias: true, alpha: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-const viewer = new GeometryRenderer(sceneCanvas);
-const controls = new OrbitControls(viewer.camera, sceneCanvas);
-controls.enableDamping = true;
-controls.screenSpacePanning = true;
-controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
-controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
-controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
-
 let rawRows: RawGeometryRow[] = [];
 let normalized: NormalizedGeometry | undefined;
 let heightScale = 2;
+let activeRenderer: WebGLRendererLike | undefined;
+let viewer: GeometryRenderer | undefined;
+let controls: OrbitControls | undefined;
+let resizeObserver: ResizeObserver | undefined;
+let animationFrameId: number | undefined;
+let initializationHandler: (() => void) | undefined;
+let disposed = false;
 
 function setStatus(message: string, error = false): void {
   statusElement.textContent = message;
@@ -58,20 +57,30 @@ function showFeature(feature?: { id: string; elevation: number }): void {
   elevationElement.textContent = `Elevation ${feature.elevation} m · Height ${heightScale.toFixed(1)}×`;
 }
 
+function fitViewAndSave(): void {
+  if (!viewer || !controls) return;
+  fitCameraAndSaveTarget(viewer, controls);
+}
+
 function renderData(): void {
-  normalized = normalizeGeometryRows(rawRows, {
-    sourceCoordinateSystem: crsSelect.value as SourceCoordinateSystem,
-    elevationUnit: 'meters'
-  });
-  const scaled: NormalizedGeometry = {
-    ...normalized,
-    features: normalized.features.map((feature) => ({ ...feature, elevation: feature.elevation * heightScale }))
-  };
-  viewer.setData(scaled);
-  viewer.setStyle({ edgeVisible: edgesInput.checked });
-  controls.target.set(0, 0, 0);
-  controls.update();
-  setStatus(`Rendered ${scaled.features.length} feature(s).`);
+  if (!viewer || !controls) return;
+  try {
+    normalized = normalizeGeometryRows(rawRows, {
+      sourceCoordinateSystem: crsSelect.value as SourceCoordinateSystem,
+      elevationUnit: 'meters'
+    });
+    const scaled: NormalizedGeometry = {
+      ...normalized,
+      features: normalized.features.map((feature) => ({ ...feature, elevation: feature.elevation * heightScale }))
+    };
+    viewer.setData(scaled);
+    viewer.setStyle({ edgeVisible: edgesInput.checked });
+    fitViewAndSave();
+    const warningText = scaled.warnings.length > 0 ? ` Warning: ${scaled.warnings.join(' ')}` : '';
+    setStatus(`Rendered ${scaled.features.length} feature(s).${warningText}`);
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : String(error), true);
+  }
 }
 
 async function loadTableauData(): Promise<void> {
@@ -87,62 +96,130 @@ async function loadTableauData(): Promise<void> {
 }
 
 function resize(): void {
+  if (!activeRenderer || !viewer) return;
   const rect = sceneCanvas.getBoundingClientRect();
-  renderer.setSize(Math.max(rect.width, 1), Math.max(rect.height, 1), false);
+  activeRenderer.setSize(Math.max(rect.width, 1), Math.max(rect.height, 1), false);
   viewer.resize();
 }
 
-sceneCanvas.addEventListener('pointermove', (event) => {
-  const feature = viewer.pick(event.clientX, event.clientY);
+function animate(): void {
+  if (disposed || !activeRenderer || !viewer || !controls) return;
+  controls.update();
+  activeRenderer.render(viewer.scene, viewer.camera);
+  animationFrameId = window.requestAnimationFrame(animate);
+}
+
+function onPointerMove(event: PointerEvent): void {
+  const feature = viewer?.pick(event.clientX, event.clientY);
   if (feature) showFeature(feature);
   else showFeature();
-});
-scaleInput.addEventListener('input', () => {
+}
+
+function onScaleInput(): void {
   heightScale = Number(scaleInput.value);
   scaleTextElement.textContent = `${heightScale.toFixed(1)}×`;
   if (rawRows.length > 0) renderData();
-});
-crsSelect.addEventListener('change', () => { if (rawRows.length > 0) renderData(); });
-edgesInput.addEventListener('change', () => viewer.setStyle({ edgeVisible: edgesInput.checked }));
-resetButton.addEventListener('click', () => { controls.reset(); viewer.reset(); });
-window.addEventListener('resize', resize);
-new ResizeObserver(resize).observe(sceneCanvas.parentElement ?? sceneCanvas);
-
-function animate(): void {
-  controls.update();
-  renderer.render(viewer.scene, viewer.camera);
-  requestAnimationFrame(animate);
 }
 
-window.addEventListener('beforeunload', () => { controls.dispose(); viewer.dispose(); renderer.dispose(); });
-resize();
-animate();
+function onCrsChange(): void {
+  if (rawRows.length > 0) renderData();
+}
 
-async function initializeExtension(): Promise<void> {
-  if (typeof tableau === 'undefined' || !tableau.extensions) {
-    setStatus('Tableau Extensions API library was not loaded. Check network access to the official Tableau API script.', true);
-    return;
+function onEdgesChange(): void {
+  viewer?.setStyle({ edgeVisible: edgesInput.checked });
+}
+
+function onReset(): void {
+  if (controls) resetCamera(controls);
+}
+
+function cleanup(): void {
+  if (disposed) return;
+  disposed = true;
+  if (animationFrameId !== undefined) window.cancelAnimationFrame(animationFrameId);
+  animationFrameId = undefined;
+  resizeObserver?.disconnect();
+  resizeObserver = undefined;
+  if (initializationHandler) window.removeEventListener('load', initializationHandler);
+  initializationHandler = undefined;
+  sceneCanvas.removeEventListener('pointermove', onPointerMove);
+  scaleInput.removeEventListener('input', onScaleInput);
+  crsSelect.removeEventListener('change', onCrsChange);
+  edgesInput.removeEventListener('change', onEdgesChange);
+  resetButton.removeEventListener('click', onReset);
+  window.removeEventListener('resize', resize);
+  controls?.dispose();
+  viewer?.dispose();
+  activeRenderer?.dispose();
+  controls = undefined;
+  viewer = undefined;
+  activeRenderer = undefined;
+}
+
+function startViewer(): boolean {
+  const initialization = initializeWebGLRenderer(sceneCanvas, Math.min(window.devicePixelRatio, 2));
+  if (!initialization.renderer) {
+    setStatus(formatWebGLInitializationError(initialization.error), true);
+    return false;
   }
-  setStatus('Connecting to Tableau Extensions API…');
+  activeRenderer = initialization.renderer;
   try {
-    await Promise.race([
-      tableau.extensions.initializeAsync(),
-      new Promise<never>((_, reject) => {
-        window.setTimeout(() => reject(new Error('Tableau Extensions API initialization timed out after 15 seconds.')), 15_000);
-      })
-    ]);
-    await loadTableauData();
+    viewer = new GeometryRenderer(sceneCanvas);
+    controls = new OrbitControls(viewer.camera, sceneCanvas);
+    controls.enableDamping = true;
+    controls.screenSpacePanning = true;
+    controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+    controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+    controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+
+    sceneCanvas.addEventListener('pointermove', onPointerMove);
+    scaleInput.addEventListener('input', onScaleInput);
+    crsSelect.addEventListener('change', onCrsChange);
+    edgesInput.addEventListener('change', onEdgesChange);
+    resetButton.addEventListener('click', onReset);
+    window.addEventListener('resize', resize);
+    resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(sceneCanvas.parentElement ?? sceneCanvas);
+    resize();
+    animate();
+    return true;
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : String(error), true);
+    cleanup();
+    setStatus(`3D viewer initialization failed: ${error instanceof Error ? error.message : String(error)}`, true);
+    return false;
   }
 }
 
-let initializationStarted = false;
-function startInitialization(): void {
-  if (initializationStarted) return;
-  initializationStarted = true;
-  void initializeExtension();
-}
+window.addEventListener('beforeunload', cleanup, { once: true });
 
-startInitialization();
-window.addEventListener('load', startInitialization, { once: true });
+if (startViewer()) {
+  async function initializeExtension(): Promise<void> {
+    if (typeof tableau === 'undefined' || !tableau.extensions) {
+      setStatus('Tableau Extensions API library was not loaded. Check network access to the official Tableau API script.', true);
+      return;
+    }
+    setStatus('Connecting to Tableau Extensions API…');
+    try {
+      await Promise.race([
+        tableau.extensions.initializeAsync(),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error('Tableau Extensions API initialization timed out after 15 seconds.')), 15_000);
+        })
+      ]);
+      await loadTableauData();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error), true);
+    }
+  }
+
+  let initializationStarted = false;
+  function startInitialization(): void {
+    if (initializationStarted || disposed) return;
+    initializationStarted = true;
+    void initializeExtension();
+  }
+
+  initializationHandler = startInitialization;
+  window.addEventListener('load', startInitialization, { once: true });
+  startInitialization();
+}

@@ -11,8 +11,10 @@ The renderer consumes the normalized output of `GeometryAdapter`:
 - `coordinateSystem: local-meters`
 - `Polygon`: one outer ring followed by zero or more hole rings
 - `MultiPolygon`: one or more polygons, each with an outer ring and optional holes
-- `elevation`: numeric meters; negative values extrude downward, zero creates a flat surface, and missing values are rendered at zero with a warning
+- `elevation`: numeric meters; negative values extrude downward, zero is a valid flat surface, and only null/undefined/blank values are rendered at zero with a warning. Other non-numeric values are errors.
 - `id`: stable feature identifier for hover/attribute display
+
+The Tableau source rejects rows whose ID cell is missing or blank; it does not invent a row ID. Ring parsing requires closed rings with at least four positions and non-zero signed area. Hole containment, ring orientation normalization, and full spatial topology validation remain outside this prototype's scope.
 
 The adapter accepts only the observed `GEOGRAPHY('POLYGON ...')` and `GEOGRAPHY('MULTIPOLYGON ...')` string forms, plus the equivalent bare WKT type. Unknown types, three-dimensional coordinates, open rings, non-numeric elevations, and unsupported values are explicit errors.
 
@@ -45,6 +47,8 @@ Manual Tableau Desktop verification remains required for:
 5. Confirming interaction behavior and resource cleanup after removing/re-adding the extension.
 
 The attached HTML prototype was not present in the repository; its interaction model was used as the UI reference for this implementation.
+
+The WebGL entrypoint reports WebGLRenderer initialization failures in the status area and does not start controls, animation, or the Tableau data load in that state. It disconnects the resize observer, cancels the animation frame, removes its listeners, and disposes controls, geometry resources, and renderer resources on unload. Fitting uses the normalized geometry bounding box; the camera and OrbitControls target are set to the same center and the fitted state is saved for reset. WebGL availability and the final renderer choice remain environment-dependent and require Tableau Desktop verification.
 
 The renderer is published as a dependency-bundled, classic IIFE script because Tableau Desktop's embedded WebView must load the extension entrypoint without relying on ES module loading or an import map. If the extension remains on `Loading extension…`, inspect the status area for a script error and verify that the served `extension/geometry-extension.js` is reachable. If it reaches `Connecting to Tableau Extensions API…`, verify that the official Tableau Extensions API script is reachable from the Tableau Desktop environment. The extension reports a missing API script or a 15-second initialization timeout directly in the status area.
 

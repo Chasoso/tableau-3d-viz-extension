@@ -64,6 +64,11 @@ function parseRing(tokens: readonly string[], start: number): { ring: Position[]
   if (first[0] !== last[0] || first[1] !== last[1]) {
     throw new GeometryInputError('Polygon rings must be closed.');
   }
+  let twiceArea = 0;
+  for (let index = 0; index < ring.length - 1; index += 1) {
+    twiceArea += ring[index][0] * ring[index + 1][1] - ring[index + 1][0] * ring[index][1];
+  }
+  if (twiceArea === 0) throw new GeometryInputError('Polygon rings must enclose a non-zero area.');
   return { ring, next: index + 1 };
 }
 
@@ -140,13 +145,22 @@ export function normalizeGeometryRows(
   }
   if (rows.length === 0) return { coordinateSystem: 'local-meters', origin: {}, features: [], warnings: [] };
 
+  let hasMissingElevation = false;
   const parsed = rows.map((row, index) => {
     const id = String(row.id ?? '').trim();
     if (!id) throw new GeometryInputError(`Row ${index + 1} has no id.`);
     const geometry = parseObservedGeometry(row.geometry);
-    const elevation = row.elevation === undefined || row.elevation === null || row.elevation === ''
-      ? 0
-      : Number(row.elevation);
+    let elevation: number;
+    if (row.elevation === undefined || row.elevation === null || (typeof row.elevation === 'string' && row.elevation.trim() === '')) {
+      elevation = 0;
+      hasMissingElevation = true;
+    } else if (typeof row.elevation === 'number') {
+      elevation = row.elevation;
+    } else if (typeof row.elevation === 'string') {
+      elevation = Number(row.elevation.trim());
+    } else {
+      throw new GeometryInputError(`Row ${index + 1} has an invalid elevation type.`);
+    }
     if (!Number.isFinite(elevation)) throw new GeometryInputError(`Row ${index + 1} has a non-numeric elevation.`);
     return { id, geometry, elevation };
   });
@@ -167,6 +181,6 @@ export function normalizeGeometryRows(
       ? { longitude: origin[0], latitude: origin[1] }
       : {},
     features,
-    warnings: parsed.some((row) => row.elevation === 0) ? ['Missing elevation values were rendered at zero meters.'] : []
+    warnings: hasMissingElevation ? ['Missing elevation values were rendered at zero meters.'] : []
   };
 }

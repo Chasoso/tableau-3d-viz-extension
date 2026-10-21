@@ -27,6 +27,7 @@ export class GeometryRenderer {
   private readonly materials = new Map<THREE.Mesh, THREE.MeshStandardMaterial>();
   private style: RenderStyle = { ...DEFAULT_STYLE };
   private hovered?: THREE.Mesh;
+  private disposed = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100_000);
@@ -47,7 +48,6 @@ export class GeometryRenderer {
   setData(data: NormalizedGeometry): void {
     this.clear();
     for (const feature of data.features) this.addFeature(feature);
-    this.fitCamera();
   }
 
   private addFeature(feature: RenderFeature): void {
@@ -90,22 +90,36 @@ export class GeometryRenderer {
 
   resize(): void {
     const rect = this.canvas.getBoundingClientRect();
-    this.camera.aspect = rect.width / Math.max(rect.height, 1);
+    this.camera.aspect = Math.max(rect.width, 1) / Math.max(rect.height, 1);
     this.camera.updateProjectionMatrix();
   }
 
-  fitCamera(): void {
+  fitCamera(): THREE.Vector3 {
     const box = new THREE.Box3().setFromObject(this.root);
-    if (box.isEmpty()) return;
+    if (box.isEmpty()) {
+      const center = new THREE.Vector3();
+      this.camera.near = 0.1;
+      this.camera.far = 1_000;
+      this.camera.position.set(10, -10, 10);
+      this.camera.lookAt(center);
+      this.camera.updateProjectionMatrix();
+      return center;
+    }
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
-    const distance = Math.max(size.x, size.y, size.z, 1) * 1.7;
-    this.camera.position.set(center.x + distance, center.y - distance, center.z + distance);
+    const radius = Math.max(size.length() / 2, 0.5);
+    const verticalFov = THREE.MathUtils.degToRad(this.camera.fov);
+    const aspect = Math.max(this.camera.aspect, 0.1);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
+    const limitingFov = Math.min(verticalFov, horizontalFov);
+    const distance = Math.max(radius / Math.sin(limitingFov / 2) * 1.25, 1);
+    const direction = new THREE.Vector3(1, -1, 1).normalize();
+    this.camera.near = Math.max(0.01, distance - radius * 1.5);
+    this.camera.far = Math.max(100, distance + radius * 1.5);
+    this.camera.position.copy(center).addScaledVector(direction, distance);
     this.camera.lookAt(center);
-  }
-
-  reset(): void {
-    this.fitCamera();
+    this.camera.updateProjectionMatrix();
+    return center;
   }
 
   clear(): void {
@@ -119,6 +133,8 @@ export class GeometryRenderer {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.clear();
     this.scene.clear();
   }

@@ -17,6 +17,12 @@ function valueOf(cell: DataValueLike | undefined): unknown {
   return cell?.nativeValue ?? cell?.value ?? cell?.formattedValue;
 }
 
+function requiredId(value: unknown, rowIndex: number): string {
+  const id = String(value ?? '').trim();
+  if (!id) throw new Error(`Tableau row ${rowIndex + 1} has no ID value.`);
+  return id;
+}
+
 export async function readTableauGeometryRows(
   worksheet: WorksheetLike,
   options: TableauGeometrySourceOptions = {}
@@ -37,7 +43,7 @@ export async function readTableauGeometryRows(
   const elevation = columns.find((column) => column.fieldId === options.elevationFieldId) ?? columns.find((column) => /^elevation$/i.test(column.fieldName ?? ''));
   if (!id) throw new Error('No ID field was returned by Tableau. Add the ID encoding or a field named id.');
   return rows.map((row, index) => ({
-    id: String(valueOf(row[id.index]) ?? `row-${index + 1}`),
+    id: requiredId(valueOf(row[id.index]), index),
     geometry: valueOf(row[geometry.index]),
     elevation: elevation ? valueOf(row[elevation.index]) : undefined
   }));
