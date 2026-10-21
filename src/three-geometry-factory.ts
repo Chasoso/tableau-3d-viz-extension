@@ -27,6 +27,6 @@ export function createExtrudedGeometries(shape: GeometryShape, height: number): 
   });
 }
 
-export function placeExtrudedGeometry(mesh: THREE.Mesh, height: number): void {
-  if (height < 0) mesh.position.z = height;
+export function placeExtrudedGeometry(object: THREE.Object3D, height: number): void {
+  if (height < 0) object.position.z = height;
 }

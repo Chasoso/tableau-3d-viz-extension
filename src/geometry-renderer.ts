@@ -60,7 +60,7 @@ export class GeometryRenderer {
       mesh.userData.feature = feature;
       placeExtrudedGeometry(mesh, feature.elevation);
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: this.style.edgeColor, transparent: true, opacity: 0.52 }));
-      edges.position.copy(mesh.position);
+      placeExtrudedGeometry(edges, feature.elevation);
       edges.userData.feature = feature;
       edges.visible = this.style.edgeVisible;
       group.add(mesh, edges);

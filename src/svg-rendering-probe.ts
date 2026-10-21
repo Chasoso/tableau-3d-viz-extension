@@ -302,6 +302,8 @@ function addFeature(feature: RenderFeature): void {
     );
     edge.userData.feature = feature;
     edge.visible = edgesToggle.checked;
+    // Keep diagnostic edges aligned with the mesh for negative extrusions.
+    placeExtrudedGeometry(edge, feature.elevation);
     edgeLines.push({ edge, feature });
     group.add(edge);
 

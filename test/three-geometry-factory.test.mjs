@@ -22,9 +22,12 @@ test('places negative extrusion below the base and keeps zero flat', () => {
     type: 'Polygon',
     rings: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
   }, -12)[0]);
+  const negativeEdges = new THREE.LineSegments();
 
   placeExtrudedGeometry(geometry, 12);
   placeExtrudedGeometry(negative, -12);
+  placeExtrudedGeometry(negativeEdges, -12);
   assert.equal(geometry.position.z, 0);
   assert.equal(negative.position.z, -12);
+  assert.equal(negativeEdges.position.z, -12);
 });

@@ -157,6 +157,7 @@ This is a manual Tableau Desktop procedure. The repository does not contain a Ta
 - Depth and draw ordering are the SVGRenderer/Projector result for the current camera. Rotating the scene is required to inspect occlusion quality; no claim of WebGL-equivalent depth precision is made.
 - The face-isolation controls are diagnostic only. They add separate `top` / `side` / `bottom` geometry paths or post-process SVG subpaths and do not alter the production WebGL renderer or the Tableau data adapter.
 - The same-color path mode depends on the current Three.js r180 SVGRenderer `d` command format (`M...` subpaths). A production implementation would need a maintained renderer boundary or a robust SVG path parser; this spike does not fork SVGRenderer.
+- Negative elevation is not expected to make edges float at the base plane. The diagnostic now applies the same negative z offset to `LineSegments` as to the face mesh; the WebGL renderer already uses the same placement contract. A previous diagnostic-only mismatch was an implementation defect, not a rendering rule.
 - Hover uses Three.js `Raycaster` against the same meshes used for SVG projection. It is a probe feature, not a Tableau selection integration.
 - This spike has no Tableau data acquisition and no production renderer switch. It must not be used to conclude that arbitrary Tableau Shapefiles, coordinate systems, or large datasets are supported.
 
