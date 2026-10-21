@@ -6,13 +6,14 @@ import { projectFaceGeometry, splitExtrusionGeometry, summarizeProjectedFaces, t
 import { createExtrudedGeometries, placeExtrudedGeometry } from './three-geometry-factory.js';
 import type { NormalizedGeometry, RawGeometryRow, RenderFeature, SourceCoordinateSystem } from './geometry-model.js';
 
-type FaceMode = 'combined' | 'separated' | FacePart;
+type FaceMode = 'combined' | 'separated' | 'side-triangles' | FacePart;
 type MaterialMode = 'double-opaque' | 'front-opaque' | 'double-transparent';
 
 interface ProbePart {
   mesh: THREE.Mesh;
   feature: RenderFeature;
   material: THREE.MeshBasicMaterial;
+  baseColor: number;
   facePart?: FacePart;
 }
 
@@ -61,12 +62,13 @@ const edgesInput = document.querySelector<HTMLInputElement>('#edges');
 const qualitySelect = document.querySelector<HTMLSelectElement>('#quality');
 const faceModeSelect = document.querySelector<HTMLSelectElement>('#faceMode');
 const materialModeSelect = document.querySelector<HTMLSelectElement>('#materialMode');
+const fillRuleSelect = document.querySelector<HTMLSelectElement>('#fillRule');
 const sortElementsInput = document.querySelector<HTMLInputElement>('#sortElements');
 const sortObjectsInput = document.querySelector<HTMLInputElement>('#sortObjects');
 const projection = document.querySelector<HTMLElement>('#projection');
 const resetButton = document.querySelector<HTMLButtonElement>('#reset');
 
-if (!viewport || !status || !selected || !metrics || !fixtureSelect || !crsSelect || !heightInput || !heightText || !edgesInput || !qualitySelect || !faceModeSelect || !materialModeSelect || !sortElementsInput || !sortObjectsInput || !projection || !resetButton) {
+if (!viewport || !status || !selected || !metrics || !fixtureSelect || !crsSelect || !heightInput || !heightText || !edgesInput || !qualitySelect || !faceModeSelect || !materialModeSelect || !fillRuleSelect || !sortElementsInput || !sortObjectsInput || !projection || !resetButton) {
   throw new Error('SVG rendering probe markup is incomplete.');
 }
 
@@ -82,6 +84,7 @@ const edgesToggle = edgesInput;
 const qualityInput = qualitySelect;
 const faceModeInput = faceModeSelect;
 const materialModeInput = materialModeSelect;
+const fillRuleInput = fillRuleSelect;
 const sortElementsToggle = sortElementsInput;
 const sortObjectsToggle = sortObjectsInput;
 const projectionElement = projection;
@@ -135,16 +138,38 @@ function materialSide(mode: MaterialMode): THREE.Side {
   return mode === 'front-opaque' ? THREE.FrontSide : THREE.DoubleSide;
 }
 
-function createMaterial(facePart?: FacePart): THREE.MeshBasicMaterial {
+function createMaterial(facePart?: FacePart, colorOverride?: number): THREE.MeshBasicMaterial {
   const mode = currentMaterialMode();
   const transparent = mode === 'double-transparent';
-  const color = currentFaceMode() === 'separated' && facePart ? FACE_COLORS[facePart] : 0x3f9db1;
+  const color = colorOverride ?? (currentFaceMode() === 'separated' && facePart ? FACE_COLORS[facePart] : 0x3f9db1);
   return new THREE.MeshBasicMaterial({ color, side: materialSide(mode), transparent, opacity: transparent ? 0.5 : 1 });
 }
 
 function colorForPart(facePart?: FacePart): number {
   return currentFaceMode() === 'separated' && facePart ? FACE_COLORS[facePart] : 0x3f9db1;
 }
+
+function splitIntoTriangles(source: THREE.BufferGeometry): THREE.BufferGeometry[] {
+  const position = source.getAttribute('position');
+  if (!position || position.count % 3 !== 0) throw new Error('Triangle isolation requires non-indexed triangle geometry.');
+  const normal = source.getAttribute('normal');
+  const triangles: THREE.BufferGeometry[] = [];
+  for (let index = 0; index < position.count; index += 3) {
+    const triangle = new THREE.BufferGeometry();
+    const positions: number[] = [];
+    const normals: number[] = [];
+    for (let offset = 0; offset < 3; offset += 1) {
+      positions.push(position.getX(index + offset), position.getY(index + offset), position.getZ(index + offset));
+      if (normal) normals.push(normal.getX(index + offset), normal.getY(index + offset), normal.getZ(index + offset));
+    }
+    triangle.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    if (normal) triangle.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    triangles.push(triangle);
+  }
+  return triangles;
+}
+
+const TRIANGLE_COLORS = [0x2f7f95, 0x3f9db1, 0x5b93a5, 0x7db7c1, 0x2b6d81, 0x6aaabd, 0x3a879c, 0x8bc4cf];
 
 function summarizeCurrentProjection(): ProjectionSummary {
   const samples = [];
@@ -169,6 +194,12 @@ function formatDepth(value: number): string {
   return Number.isFinite(value) ? value.toPrecision(8) : 'n/a';
 }
 
+function formatAreaRange(summary: ProjectionSummary, facePart: FacePart): string {
+  const part = summary.byPart[facePart];
+  if (part.total === 0) return `${facePart} n/a`;
+  return `${facePart} abs ${part.minAbsArea.toExponential(2)}..${part.maxAbsArea.toExponential(2)} (mean ${part.meanAbsArea.toExponential(2)})`;
+}
+
 function setStatus(message: string, error = false): void {
   statusElement.textContent = message;
   statusElement.dataset.state = error ? 'error' : 'ok';
@@ -186,7 +217,7 @@ function setSelected(feature?: RenderFeature): void {
 function setHovered(feature?: RenderFeature): void {
   hoveredId = feature?.id;
   for (const part of parts) {
-    part.material.color.setHex(part.feature.id === hoveredId ? 0x1e637e : colorForPart(part.facePart));
+    part.material.color.setHex(part.feature.id === hoveredId ? 0x1e637e : part.baseColor);
   }
   for (const edgeLine of edgeLines) {
     (edgeLine.edge.material as THREE.LineBasicMaterial).color.setHex(edgeLine.feature.id === hoveredId ? 0x173b4a : 0xffffff);
@@ -225,22 +256,24 @@ function addFeature(feature: RenderFeature): void {
     const selectedFaceMode = currentFaceMode();
     const split = selectedFaceMode === 'combined' ? undefined : splitExtrusionGeometry(geometry);
     const renderParts = selectedFaceMode === 'combined'
-      ? [{ geometry, facePart: undefined }]
+      ? [{ geometry, facePart: undefined, color: 0x3f9db1 }]
       : selectedFaceMode === 'top' || selectedFaceMode === 'side' || selectedFaceMode === 'bottom'
-        ? [{ geometry: split?.[selectedFaceMode], facePart: selectedFaceMode }]
-        : (['top', 'side', 'bottom'] as const).map((facePart) => ({ geometry: split?.[facePart], facePart }));
+        ? [{ geometry: split?.[selectedFaceMode], facePart: selectedFaceMode, color: colorForPart(selectedFaceMode) }]
+        : selectedFaceMode === 'side-triangles'
+          ? split?.side ? splitIntoTriangles(split.side).map((triangle, index) => ({ geometry: triangle, facePart: 'side' as const, color: TRIANGLE_COLORS[index % TRIANGLE_COLORS.length] })) : []
+          : (['top', 'side', 'bottom'] as const).map((facePart) => ({ geometry: split?.[facePart], facePart, color: colorForPart(facePart) }));
     const usedGeometries = new Set<THREE.BufferGeometry>();
 
     for (const renderPart of renderParts) {
       if (!renderPart.geometry) continue;
       usedGeometries.add(renderPart.geometry);
-      const material = createMaterial(renderPart.facePart);
+      const material = createMaterial(renderPart.facePart, renderPart.color);
       const mesh = new THREE.Mesh(renderPart.geometry, material);
       mesh.userData.feature = feature;
       mesh.userData.facePart = renderPart.facePart;
       placeExtrudedGeometry(mesh, feature.elevation);
       group.add(mesh);
-      parts.push({ mesh, feature, material, facePart: renderPart.facePart });
+      parts.push({ mesh, feature, material, baseColor: renderPart.color, facePart: renderPart.facePart });
     }
     if (split) {
       for (const facePart of ['top', 'side', 'bottom'] as const) {
@@ -274,9 +307,10 @@ function render(): void {
   metricsElement.textContent = `${normalized?.features.length ?? 0} feature(s) · ${renderer.info.render.faces} faces · ${renderer.domElement.childElementCount} SVG nodes · ${renderDuration.toFixed(1)} ms last render`;
   const summary = summarizeCurrentProjection();
   const paths = Array.from(renderer.domElement.querySelectorAll('path'));
+  for (const path of paths) path.setAttribute('fill-rule', fillRuleInput.value);
   const fillPaths = paths.filter((path) => (path.getAttribute('style') ?? '').includes('fill:'));
   const strokePaths = paths.filter((path) => (path.getAttribute('style') ?? '').includes('stroke:'));
-  projectionElement.textContent = `Projected ${summary.total} triangles · area +${summary.positiveArea}/-${summary.negativeArea}/zero ${summary.zeroArea} · vertices outside clip ${summary.outsideClip} · depth ${formatDepth(summary.depthMin)}..${formatDepth(summary.depthMax)} · SVG paths fill ${fillPaths.length}, stroke ${strokePaths.length} · sortElements ${renderer.sortElements ? 'on' : 'off'}, sortObjects ${renderer.sortObjects ? 'on' : 'off'}`;
+  projectionElement.textContent = `Projected ${summary.total} triangles · area +${summary.positiveArea}/-${summary.negativeArea}/zero ${summary.zeroArea} · vertices outside clip ${summary.outsideClip} · depth ${formatDepth(summary.depthMin)}..${formatDepth(summary.depthMax)} · ${formatAreaRange(summary, 'top')} · ${formatAreaRange(summary, 'side')} · ${formatAreaRange(summary, 'bottom')} · SVG paths fill ${fillPaths.length}, stroke ${strokePaths.length} · fill-rule ${fillRuleInput.value} · sortElements ${renderer.sortElements ? 'on' : 'off'}, sortObjects ${renderer.sortObjects ? 'on' : 'off'}`;
 }
 
 function renderFixture(): void {
@@ -349,6 +383,7 @@ qualityInput.addEventListener('change', () => {
 });
 faceModeInput.addEventListener('change', renderFixture);
 materialModeInput.addEventListener('change', renderFixture);
+fillRuleInput.addEventListener('change', render);
 sortElementsToggle.addEventListener('change', () => {
   renderer.sortElements = sortElementsToggle.checked;
   render();

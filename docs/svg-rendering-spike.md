@@ -31,8 +31,9 @@ The initial height exaggeration is `2.0×`. The page reports the number of norma
 
 The page also exposes investigation-only controls:
 
-- **Faces**: render the current combined geometry, split top/side/bottom geometry, or one face group at a time.
+- **Faces**: render the current combined geometry, split top/side/bottom geometry, or one face group at a time. `side triangles (unique colors)` gives every side triangle a different SVG style so path aggregation can be isolated from projection.
 - **Material**: compare `MeshBasicMaterial` with `DoubleSide`, `FrontSide`, and 50% opacity.
+- **Fill rule**: compare SVG `nonzero` and `evenodd` on the emitted paths; this is a diagnostic attribute applied after SVGRenderer output.
 - **sortElements / sortObjects**: toggle the two SVGRenderer painter-sort settings independently.
 - **Projection**: report signed projected triangle area, vertices outside the clip range, projected depth range, and SVG fill/stroke path counts.
 
@@ -58,11 +59,19 @@ On 2026-10-22, the same Chrome context was used with the isolation controls and 
 | Separated geometry with sort settings on or off | Path count and painter order changed, but face groups remained available | Sorting affects SVG output ordering/grouping, not geometry generation |
 | `DoubleSide` with 50% opacity | Face presence remained; only visual transparency changed | Opacity is not the primary cause |
 
+On 2026-10-22, the elevation fixture was checked again at the default `2.0×` height with Edges OFF. In `side only`, the diagnostic reported 16 projected triangles, all with non-zero projected area (`abs 8.73e-4..3.26e-3`, mean `1.92e-3` in the initial view), but SVGRenderer emitted one fill path and the long side faces appeared mainly as outlines. This is not consistent with side geometry being absent or all side triangles being edge-on.
+
+The investigation-only `side triangles (unique colors)` mode then rendered the same 16 side triangles as 16 separately styled SVG paths. After the same vertical camera drag, the projection summary remained the same (`abs 1.19e-4..4.66e-3`, mean `1.75e-3`), while the separate paths showed broad filled side surfaces. Switching back to `side only` at the corresponding camera operation produced one fill path and the outline-like result again. Turning `sortElements` and `sortObjects` off did not recover the fill. This is strong evidence that the loss occurs during same-style SVG path aggregation, not during extrusion generation or projection. It is still an SVGRenderer behavior observation, not a proof that every geometry and camera angle will behave identically.
+
+The likely mechanism is that SVGRenderer concatenates consecutive faces with the same style into one `<path>`, while the side sample contains both positive and negative projected triangle windings (`+8/-8`, zero `0`). The default SVG non-zero fill rule can cancel or expose only narrow portions when these subpaths overlap. The per-triangle style experiment avoids that aggregation. The diagnostic applies `fill-rule` only to its own emitted SVG for comparison; it does not change the production renderer or claim that a particular workaround is production-ready.
+
+The additional `fill-rule` comparison does not by itself resolve the symptom: in the elevation fixture, `side only` still emitted one fill path and remained outline-like with `evenodd`, while `side triangles (unique colors)` emitted 16 fill paths and showed filled surfaces with the same projection metrics. This narrows the investigation toward path decomposition/overlap and painter output, rather than a single `fill-rule` setting.
+
 The projection panel reports 34 positive and 34 negative signed triangle areas for the mixed fixture at the initial view and 16 positive / 12 negative areas for the elevation fixture at the isolated view. These are diagnostic projections, not a claim that every triangle is visibly unobscured. The SVGRenderer source uses Projector painter sorting and accumulates adjacent faces with the same style into a single SVG path; it does not provide a WebGL depth buffer. The exact contribution of path winding cancellation versus camera-dependent occlusion is therefore a renderer limitation hypothesis, while the combined-versus-separated visual difference is an observed result.
 
 ### Current recommendation
 
-The result is **B: there is a bounded reason to continue SVGRenderer investigation**, but it is not an Issue #4 acceptance `PASS` and it is not a production-renderer decision. A small next experiment should render cap and side groups as separately styled SVG paths in the real probe, then repeat the hole, MultiPolygon, negative-elevation, and camera-rotation checks. Tableau Desktop has not yet been rerun with these new isolation controls, so the separated result is `NOT VERIFIED` in Tableau.
+The result remains **B: there is a bounded reason to continue SVGRenderer investigation**, but it is not an Issue #4 acceptance `PASS` and it is not a production-renderer decision. Per-triangle styling is useful as a diagnostic and a possible direction, but its SVG DOM growth, visual stability, hole/MultiPolygon behavior, and performance are not yet established. Tableau Desktop has not yet been rerun with the new per-triangle isolation control, so the result is `NOT VERIFIED` in Tableau.
 
 If face separation still fails in Tableau or under representative geometry, the fallback investigation should be a Canvas 2D renderer that reuses the normalized geometry, the existing Three.js camera, and the same projected face samples: project vertices with the camera matrices, painter-sort faces by depth, draw each ring with Canvas 2D fill/stroke, and use the projected paths for hit testing. That fallback is not implemented by this spike and should not be adopted until the SVG isolation experiment is complete.
 
@@ -72,16 +81,17 @@ For each fixture:
 
 1. Confirm the status says that the fixture was rendered with `Three.js SVGRenderer` and that `WebGL is not used`.
 2. With Edges OFF, record the `combined` view, then switch to `separated top/side/bottom` and compare filled areas.
-3. Select `top only`, `side only`, and `bottom only`; record the rendered-face count and whether broad faces are filled at the current camera angle.
+3. Select `top only`, `side only`, `side triangles (unique colors)`, and `bottom only`; record the rendered-face count, SVG fill-path count, and whether broad faces are filled at the current camera angle. The side-triangle mode is diagnostic only; do not treat its different colors as a styling requirement.
 4. Compare `DoubleSide` and `FrontSide`, especially for `bottom only`; record culling rather than treating missing back faces as a geometry failure.
-5. Toggle `sortElements` and `sortObjects` independently while keeping the same fixture and camera; record path counts and visual changes.
-6. Rotate with the left mouse button through at least one horizontal and one vertical drag, then repeat the face comparison. Do not use one camera angle as a universal PASS.
-7. Pan with the right mouse button and zoom with the mouse wheel.
-8. Click the reset button and confirm the fitted initial view returns.
-9. Toggle **Edges** and confirm the boundary lines disappear and reappear.
-10. Hover a feature and confirm its identifier and scaled extrusion value are shown.
-11. Change the height control from `2.0×` and confirm the extrusion changes. In the elevation fixture, confirm the zero-height feature is flat, the negative feature extends below its base, and the missing value is rendered at zero with the adapter warning semantics.
-12. Switch SVG quality between `high` and `low`, then record any visible quality or render-time difference.
+5. Compare `nonzero` and `evenodd` for `side only`; record whether the one-path symptom changes.
+6. Toggle `sortElements` and `sortObjects` independently while keeping the same fixture and camera; record path counts and visual changes.
+7. Rotate with the left mouse button through at least one horizontal and one vertical drag, then repeat the face comparison. Do not use one camera angle as a universal PASS.
+8. Pan with the right mouse button and zoom with the mouse wheel.
+9. Click the reset button and confirm the fitted initial view returns.
+10. Toggle **Edges** and confirm the boundary lines disappear and reappear.
+11. Hover a feature and confirm its identifier and scaled extrusion value are shown.
+12. Change the height control from `2.0×` and confirm the extrusion changes. In the elevation fixture, confirm the zero-height feature is flat, the negative feature extends below its base, and the missing value is rendered at zero with the adapter warning semantics.
+13. Switch SVG quality between `high` and `low`, then record any visible quality or render-time difference.
 
 The acceptance result must be recorded separately for each item. A page load or a successful first render alone is not sufficient to claim that all interaction and geometry cases pass.
 

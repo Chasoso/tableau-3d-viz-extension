@@ -23,7 +23,18 @@ export interface ProjectionSummary {
   outsideClip: number;
   depthMin: number;
   depthMax: number;
+  byPart: Record<FacePart, FacePartProjectionSummary>;
   samples: readonly ProjectedFaceSample[];
+}
+
+export interface FacePartProjectionSummary {
+  total: number;
+  positiveArea: number;
+  negativeArea: number;
+  zeroArea: number;
+  minAbsArea: number;
+  maxAbsArea: number;
+  meanAbsArea: number;
 }
 
 const FACE_PARTS: readonly FacePart[] = ['top', 'side', 'bottom'];
@@ -130,6 +141,21 @@ export function summarizeProjectedFaces(samples: readonly ProjectedFaceSample[])
   const negativeArea = samples.filter((sample) => sample.signedArea < -1e-7).length;
   const zeroArea = samples.length - positiveArea - negativeArea;
   const depths = samples.map((sample) => sample.depth).filter(Number.isFinite);
+  const byPart = Object.fromEntries(FACE_PARTS.map((part) => {
+    const partSamples = samples.filter((sample) => sample.part === part);
+    const absoluteAreas = partSamples.map((sample) => Math.abs(sample.signedArea));
+    const partPositiveArea = partSamples.filter((sample) => sample.signedArea > 1e-7).length;
+    const partNegativeArea = partSamples.filter((sample) => sample.signedArea < -1e-7).length;
+    return [part, {
+      total: partSamples.length,
+      positiveArea: partPositiveArea,
+      negativeArea: partNegativeArea,
+      zeroArea: partSamples.length - partPositiveArea - partNegativeArea,
+      minAbsArea: absoluteAreas.length > 0 ? Math.min(...absoluteAreas) : Number.NaN,
+      maxAbsArea: absoluteAreas.length > 0 ? Math.max(...absoluteAreas) : Number.NaN,
+      meanAbsArea: absoluteAreas.length > 0 ? absoluteAreas.reduce((sum, area) => sum + area, 0) / absoluteAreas.length : Number.NaN
+    } satisfies FacePartProjectionSummary];
+  })) as Record<FacePart, FacePartProjectionSummary>;
   return {
     total: samples.length,
     positiveArea,
@@ -138,6 +164,7 @@ export function summarizeProjectedFaces(samples: readonly ProjectedFaceSample[])
     outsideClip: samples.filter((sample) => sample.outsideClip).length,
     depthMin: depths.length > 0 ? Math.min(...depths) : Number.NaN,
     depthMax: depths.length > 0 ? Math.max(...depths) : Number.NaN,
+    byPart,
     samples
   };
 }

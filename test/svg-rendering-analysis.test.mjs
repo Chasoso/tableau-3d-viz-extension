@@ -64,6 +64,9 @@ test('reports projected winding, depth, and clipping independently of SVG output
   assert.equal(summary.positiveArea + summary.negativeArea + summary.zeroArea, summary.total);
   assert.ok(summary.depthMin < summary.depthMax);
   assert.equal(summary.samples.length, summary.total);
+  assert.equal(summary.byPart.top.total + summary.byPart.side.total + summary.byPart.bottom.total, summary.total);
+  assert.ok(summary.byPart.side.maxAbsArea > 0);
+  assert.ok(summary.byPart.side.meanAbsArea > 0);
 
   disposeParts(parts);
   source.dispose();
