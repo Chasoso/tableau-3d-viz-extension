@@ -82,6 +82,7 @@ Phase 0の診断拡張と、Phase 1のThree.js描画プロトタイプを実装�
 - [Development workflow](docs/development-workflow.md) — IssueからPRまでの作業手順
 - [Phase 0 Geometry retrieval specification](docs/specifications/SPEC-001-geometry-retrieval.md) — 実機検証の手順と判定基準
 - [Phase 0 local verification](docs/phase-0-local-verification.md) — 診断拡張のビルド・fixture生成・Tableau Desktop操作
+- [Rendering API diagnostic](docs/webgl-rendering-diagnostic.md) — ChromeとTableau Desktop内のCanvas 2D / WebGL 1 / WebGL 2 / SVG比較
 - [SPEC-001 report template](docs/reports/SPEC-001-geometry-retrieval-report.md) — 実機証跡と判定の記録用テンプレート
 - [ADR-001 Geometry supply](docs/adr/ADR-001-geometry-supply.md) — 直接取得を第一候補とする条件付き設計判断
 - [SPEC-002 3D rendering](docs/specifications/SPEC-002-3d-rendering.md) — Polygon / MultiPolygon描画、座標・高さ・操作仕様
