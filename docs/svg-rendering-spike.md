@@ -22,20 +22,24 @@ Open:
 http://localhost:8765/diagnostics/svg-rendering.html
 ```
 
-The page contains two selectable fixtures:
+The page contains five selectable fixtures:
 
 1. **Mixed Polygon / hole / MultiPolygon** — one simple Polygon, one Polygon with a hole, and one two-part MultiPolygon in EPSG:4326.
 2. **Elevation edge cases** — positive, zero, negative, and missing elevation values in Cartesian coordinates.
+3. **Synthetic small grid** — 4 Cartesian Polygon features.
+4. **Synthetic medium grid** — 64 Cartesian Polygon features.
+5. **Synthetic large grid** — 256 Cartesian Polygon features for a bounded path-count/performance observation.
 
 The initial height exaggeration is `2.0×`. The page reports the number of normalized features, rendered faces, SVG nodes, and the last render duration. The duration is a local observation, not a benchmark.
 
 The page also exposes investigation-only controls:
 
-- **Faces**: render the current combined geometry, split top/side/bottom geometry, or one face group at a time. `side triangles (unique colors)` gives every side triangle a different SVG style so path aggregation can be isolated from projection.
+- **Faces**: render the current combined geometry, split top/side/bottom geometry, or one face group at a time. `side separate paths (same color)` separates the emitted SVG subpaths after rendering while retaining one material color. `side triangles (unique colors)` gives every side triangle a different SVG style as a separate diagnostic comparison.
 - **Material**: compare `MeshBasicMaterial` with `DoubleSide`, `FrontSide`, and 50% opacity.
 - **Fill rule**: compare SVG `nonzero` and `evenodd` on the emitted paths; this is a diagnostic attribute applied after SVGRenderer output.
 - **sortElements / sortObjects**: toggle the two SVGRenderer painter-sort settings independently.
 - **Projection**: report signed projected triangle area, vertices outside the clip range, projected depth range, and SVG fill/stroke path counts.
+- **Performance**: report total render time, SVGRenderer time, same-color path-split time, feature/face counts, and SVG node count. These are local observations, not benchmarks.
 
 ## Local Chrome smoke observation
 
@@ -67,6 +71,26 @@ The likely mechanism is that SVGRenderer concatenates consecutive faces with the
 
 The additional `fill-rule` comparison does not by itself resolve the symptom: in the elevation fixture, `side only` still emitted one fill path and remained outline-like with `evenodd`, while `side triangles (unique colors)` emitted 16 fill paths and showed filled surfaces with the same projection metrics. This narrows the investigation toward path decomposition/overlap and painter output, rather than a single `fill-rule` setting.
 
+## Same-color path separation observation
+
+The new `side separate paths (same color)` mode keeps the `MeshBasicMaterial` color unchanged. After `SVGRenderer.render()` completes, the diagnostic reads each generated path's `d` attribute, splits the renderer's concatenated `M...` subpaths, and clones the original SVG attributes onto one `<path>` element per subpath. It does not modify Three.js, `node_modules`, WebGLRenderer, the Geometry adapter, or the production extension entrypoint. This is a diagnostic DOM post-process and is intentionally not a production implementation yet.
+
+In the elevation fixture on 2026-10-22, Chrome reported `16` projected side triangles with non-zero areas and emitted `16` same-color fill paths. The initial view rendered the side surfaces as filled. After horizontal and vertical drags, the fill-path count remained `16`; the measured side absolute-area ranges were `1.06e-3..2.76e-3` (mean `1.71e-3`) and `2.86e-5..4.60e-3` (mean `1.62e-3`), respectively, with zero vertices outside the clip range. This indicates that the small DOM post-process can remove the observed one-path fill loss without changing the material color for these sampled views.
+
+The mixed Polygon / hole / MultiPolygon fixture emitted `40` same-color side paths for `40` side triangles. Its EPSG:4326-to-local-meter coordinate scale makes the fixture's elevation comparatively small, so its side surfaces are visually thin; the path count and projection diagnostics are evidence of separation, not a visual PASS for all MultiPolygon and hole camera views. The elevation fixture covers a single Polygon per feature and positive, zero, negative, and missing elevation cases.
+
+### Bounded Chrome performance observation
+
+The following values were recorded in the local Chromium context on 2026-10-22 with `side separate paths (same color)`, Edges OFF, and the default height. Times include the diagnostic's DOM path split where applicable.
+
+| Fixture | Features | Rendered faces | SVG nodes / same-color paths | Total | SVGRenderer | Path split |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Synthetic small | 4 | 32 | 32 / 32 | 0.4 ms | 0.2 ms | 0.2 ms |
+| Synthetic medium | 64 | 512 | 512 / 512 | 7.9 ms | 5.0 ms | 2.9 ms |
+| Synthetic large | 256 | 2048 | 2048 / 2048 | 39.7 ms | 29.2 ms | 10.5 ms |
+
+For comparison, the same synthetic large fixture in `side only` emitted `1` SVG node and took `15.0 ms` total. This shows a roughly linear SVG-node and path-split cost in this small synthetic range, but it is not a Tableau Desktop benchmark and does not establish acceptable memory or interaction latency for production data.
+
 ### Tableau Desktop corroboration
 
 On 2026-10-22, a user-provided Tableau Desktop capture reproduced the same distinction in the embedded page. Both captures used the `Elevation edge cases` fixture, Cartesian CRS, `2.0×` height, Edges OFF, `MeshBasicMaterial / DoubleSide / opaque`, high quality, `fill-rule nonzero`, and both sort settings ON.
@@ -82,7 +106,9 @@ The projection panel reports 34 positive and 34 negative signed triangle areas f
 
 ### Current recommendation
 
-The result remains **B: there is a bounded reason to continue SVGRenderer investigation**, but it is not an Issue #4 acceptance `PASS` and it is not a production-renderer decision. Per-triangle styling is useful as a diagnostic and a possible direction, but its SVG DOM growth, visual stability, hole/MultiPolygon behavior, and performance are not yet established. Tableau Desktop has not yet been rerun with the new per-triangle isolation control, so the result is `NOT VERIFIED` in Tableau.
+The result remains **B: there is a bounded reason to continue SVGRenderer investigation**, but it is not an Issue #4 acceptance `PASS` and it is not a production-renderer decision. Same-color DOM path separation works for the sampled elevation views in Chrome and is a smaller intervention than a Three.js fork, but it relies on the current SVGRenderer path-data shape, increases SVG node count, and has not been validated for arbitrary holes, MultiPolygon occlusion, large data, or Tableau Desktop. The user-provided Tableau evidence covers the unique-color diagnostic mode; the new same-color mode remains `NOT VERIFIED` in Tableau.
+
+A bounded Canvas 2D comparison should begin in parallel before adopting SVGRenderer. This does not require a migration now: compare projected face painter ordering, hole handling, rotation quality, and the same synthetic performance tiers. If SVG path separation fails in Tableau or its node cost is unacceptable, the Canvas 2D comparison becomes the primary fallback rather than extending the SVGRenderer workaround.
 
 If face separation still fails in Tableau or under representative geometry, the fallback investigation should be a Canvas 2D renderer that reuses the normalized geometry, the existing Three.js camera, and the same projected face samples: project vertices with the camera matrices, painter-sort faces by depth, draw each ring with Canvas 2D fill/stroke, and use the projected paths for hit testing. That fallback is not implemented by this spike and should not be adopted until the SVG isolation experiment is complete.
 
@@ -92,7 +118,7 @@ For each fixture:
 
 1. Confirm the status says that the fixture was rendered with `Three.js SVGRenderer` and that `WebGL is not used`.
 2. With Edges OFF, record the `combined` view, then switch to `separated top/side/bottom` and compare filled areas.
-3. Select `top only`, `side only`, `side triangles (unique colors)`, and `bottom only`; record the rendered-face count, SVG fill-path count, and whether broad faces are filled at the current camera angle. The side-triangle mode is diagnostic only; do not treat its different colors as a styling requirement.
+3. Select `top only`, `side only`, `side separate paths (same color)`, `side triangles (unique colors)`, and `bottom only`; record the rendered-face count, SVG fill-path count, and whether broad faces are filled at the current camera angle. The unique-color mode is diagnostic only; do not treat its different colors as a styling requirement.
 4. Compare `DoubleSide` and `FrontSide`, especially for `bottom only`; record culling rather than treating missing back faces as a geometry failure.
 5. Compare `nonzero` and `evenodd` for `side only`; record whether the one-path symptom changes.
 6. Toggle `sortElements` and `sortObjects` independently while keeping the same fixture and camera; record path counts and visual changes.
@@ -103,6 +129,7 @@ For each fixture:
 11. Hover a feature and confirm its identifier and scaled extrusion value are shown.
 12. Change the height control from `2.0×` and confirm the extrusion changes. In the elevation fixture, confirm the zero-height feature is flat, the negative feature extends below its base, and the missing value is rendered at zero with the adapter warning semantics.
 13. Switch SVG quality between `high` and `low`, then record any visible quality or render-time difference.
+14. Select each synthetic grid and record features, faces, SVG nodes, total time, SVGRenderer time, and same-color path-split time. Repeat at least `side only` and `side separate paths (same color)` for the large grid.
 
 The acceptance result must be recorded separately for each item. A page load or a successful first render alone is not sufficient to claim that all interaction and geometry cases pass.
 
@@ -114,8 +141,11 @@ This page can be loaded without a `.trex` manifest as a Tableau Dashboard **Web 
 2. Create or open a dashboard.
 3. Drag **Web Page** from the Objects pane into the dashboard.
 4. Enter `http://localhost:8765/diagnostics/svg-rendering.html`.
-5. Select both fixtures and repeat the manual checks above.
-6. Record the Tableau Desktop version, operating system, selected fixture, and any visible error. Save screenshots because SVG DOM output may not be available through Tableau's clipboard/download handling.
+5. Select `Elevation edge cases`, set Faces to `side only`, Edges OFF, `nonzero`, and record the one-path result.
+6. Without changing the material, set Faces to `side separate paths (same color)` and record whether the same-color side surfaces are filled and whether the path count increases to the side triangle count.
+7. Repeat steps 5–6 after one horizontal and one vertical rotation. Then repeat with `Mixed Polygon / hole / MultiPolygon`; record hole/MultiPolygon visibility separately from path count.
+8. Select each synthetic grid and record the displayed timing and SVG-node values. Treat these as environment-specific observations, not PASS thresholds.
+9. Record the Tableau Desktop version, operating system, selected fixture, and any visible error. Save screenshots because SVG DOM output may not be available through Tableau's clipboard/download handling.
 
 This is a manual Tableau Desktop procedure. The repository does not contain a Tableau Desktop execution artifact, so no Tableau result is claimed by this document until a user records it.
 
@@ -125,7 +155,8 @@ This is a manual Tableau Desktop procedure. The repository does not contain a Ta
 - SVGRenderer supports flat/lit polygon faces and lines but does not provide WebGL-style advanced shading, textures, or shadows. This spike uses `MeshBasicMaterial` and `LineBasicMaterial` intentionally.
 - The page uses Three.js `ExtrudeGeometry` and the existing adapter output. SVGRenderer's vector output may grow in DOM size with feature, triangle, and edge counts; the displayed last-render duration should be recorded for representative data.
 - Depth and draw ordering are the SVGRenderer/Projector result for the current camera. Rotating the scene is required to inspect occlusion quality; no claim of WebGL-equivalent depth precision is made.
-- The face-isolation controls are diagnostic only. They add a separate `top` / `side` / `bottom` geometry path and do not alter the production WebGL renderer or the Tableau data adapter.
+- The face-isolation controls are diagnostic only. They add separate `top` / `side` / `bottom` geometry paths or post-process SVG subpaths and do not alter the production WebGL renderer or the Tableau data adapter.
+- The same-color path mode depends on the current Three.js r180 SVGRenderer `d` command format (`M...` subpaths). A production implementation would need a maintained renderer boundary or a robust SVG path parser; this spike does not fork SVGRenderer.
 - Hover uses Three.js `Raycaster` against the same meshes used for SVG projection. It is a probe feature, not a Tableau selection integration.
 - This spike has no Tableau data acquisition and no production renderer switch. It must not be used to conclude that arbitrary Tableau Shapefiles, coordinate systems, or large datasets are supported.
 

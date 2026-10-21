@@ -39,6 +39,15 @@ export interface FacePartProjectionSummary {
 
 const FACE_PARTS: readonly FacePart[] = ['top', 'side', 'bottom'];
 
+/**
+ * SVGRenderer r180 concatenates face subpaths into one d attribute when the
+ * computed style is identical. The probe uses this small parser to inspect a
+ * DOM-level separation without changing Three.js or its renderer source.
+ */
+export function splitSvgPathData(pathData: string): string[] {
+  return pathData.trim().split(/(?=M)/g).map((path) => path.trim()).filter(Boolean);
+}
+
 function createPartGeometry(positions: number[], normals: number[]): THREE.BufferGeometry | undefined {
   if (positions.length === 0) return undefined;
   const geometry = new THREE.BufferGeometry();

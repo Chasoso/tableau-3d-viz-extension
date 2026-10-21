@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { parseObservedGeometry } from '../extension/geometry-adapter.js';
 import { createExtrudedGeometries } from '../extension/three-geometry-factory.js';
-import { projectFaceGeometry, splitExtrusionGeometry, summarizeProjectedFaces } from '../extension/svg-rendering-analysis.js';
+import { projectFaceGeometry, splitExtrusionGeometry, splitSvgPathData, summarizeProjectedFaces } from '../extension/svg-rendering-analysis.js';
 
 function disposeParts(parts) {
   for (const geometry of Object.values(parts)) geometry?.dispose();
@@ -80,4 +80,9 @@ test('classifies a flat Polygon as a top-only surface', () => {
   assert.equal(parts.bottom, undefined);
   disposeParts(parts);
   source.dispose();
+});
+
+test('splits SVGRenderer-style concatenated subpaths without changing path data', () => {
+  const paths = splitSvgPathData('M0,0L1,0L0,1zM2,2L3,2L2,3z');
+  assert.deepEqual(paths, ['M0,0L1,0L0,1z', 'M2,2L3,2L2,3z']);
 });

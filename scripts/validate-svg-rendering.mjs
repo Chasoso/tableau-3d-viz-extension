@@ -28,8 +28,8 @@ if (!html.includes('NO WEBGL') || !html.includes('does not load Tableau API')) {
   throw new Error('SVG rendering probe must declare its standalone, non-WebGL scope.');
 }
 
-if (!html.includes('side-triangles')) {
-  throw new Error('SVG rendering probe must expose the per-triangle side isolation mode.');
+if (!html.includes('side-triangles') || !html.includes('side-separate-paths')) {
+  throw new Error('SVG rendering probe must expose both side isolation modes.');
 }
 
 console.log('SVG rendering probe validation: OK');

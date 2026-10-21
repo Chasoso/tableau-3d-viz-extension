@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
 import { normalizeGeometryRows } from './geometry-adapter.js';
-import { projectFaceGeometry, splitExtrusionGeometry, summarizeProjectedFaces, type FacePart, type ProjectionSummary } from './svg-rendering-analysis.js';
+import { projectFaceGeometry, splitExtrusionGeometry, splitSvgPathData, summarizeProjectedFaces, type FacePart, type ProjectionSummary } from './svg-rendering-analysis.js';
 import { createExtrudedGeometries, placeExtrudedGeometry } from './three-geometry-factory.js';
 import type { NormalizedGeometry, RawGeometryRow, RenderFeature, SourceCoordinateSystem } from './geometry-model.js';
 
-type FaceMode = 'combined' | 'separated' | 'side-triangles' | FacePart;
+type FaceMode = 'combined' | 'separated' | 'side-triangles' | 'side-separate-paths' | FacePart;
 type MaterialMode = 'double-opaque' | 'front-opaque' | 'double-transparent';
 
 interface ProbePart {
@@ -28,6 +28,24 @@ interface FixtureDefinition {
   rows: readonly RawGeometryRow[];
 }
 
+function createGridRows(columns: number, rows: number, spacing: number): RawGeometryRow[] {
+  const result: RawGeometryRow[] = [];
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < columns; x += 1) {
+      const left = x * spacing;
+      const bottom = y * spacing;
+      const right = left + 0.8;
+      const top = bottom + 0.8;
+      result.push({
+        id: `grid-${x}-${y}`,
+        geometry: `POLYGON ((${left} ${bottom}, ${right} ${bottom}, ${right} ${top}, ${left} ${top}, ${left} ${bottom}))`,
+        elevation: 1 + ((x + y) % 5)
+      });
+    }
+  }
+  return result;
+}
+
 const FIXTURES: Record<string, FixtureDefinition> = {
   mixed: {
     label: 'Mixed Polygon / hole / MultiPolygon',
@@ -47,6 +65,21 @@ const FIXTURES: Record<string, FixtureDefinition> = {
       { id: 'negative-12m', geometry: 'POLYGON ((4 -2, 8 -2, 8 2, 4 2, 4 -2))', elevation: -12 },
       { id: 'missing-elevation', geometry: 'POLYGON ((-2 5, 2 5, 2 9, -2 9, -2 5))' }
     ]
+  },
+  syntheticSmall: {
+    label: 'Synthetic small grid (4 Polygon features)',
+    sourceCoordinateSystem: 'cartesian',
+    rows: createGridRows(2, 2, 1.5)
+  },
+  syntheticMedium: {
+    label: 'Synthetic medium grid (64 Polygon features)',
+    sourceCoordinateSystem: 'cartesian',
+    rows: createGridRows(8, 8, 1.5)
+  },
+  syntheticLarge: {
+    label: 'Synthetic large grid (256 Polygon features)',
+    sourceCoordinateSystem: 'cartesian',
+    rows: createGridRows(16, 16, 1.5)
   }
 };
 
@@ -123,6 +156,8 @@ let sourceElevations = new Map<string, number>();
 let heightScale = 2;
 let hoveredId: string | undefined;
 let renderDuration = 0;
+let svgRendererDuration = 0;
+let pathSplitDuration = 0;
 
 const FACE_COLORS: Record<FacePart, number> = { top: 0x3f9db1, side: 0x2f7f95, bottom: 0x7db7c1 };
 
@@ -167,6 +202,23 @@ function splitIntoTriangles(source: THREE.BufferGeometry): THREE.BufferGeometry[
     triangles.push(triangle);
   }
   return triangles;
+}
+
+function separateSvgSubpaths(rootElement: SVGElement): number {
+  let separatedPathCount = 0;
+  for (const path of Array.from(rootElement.querySelectorAll('path'))) {
+    const subpaths = splitSvgPathData(path.getAttribute('d') ?? '');
+    if (subpaths.length <= 1) continue;
+    const fragment = document.createDocumentFragment();
+    for (const subpath of subpaths) {
+      const separatedPath = path.cloneNode(true) as SVGPathElement;
+      separatedPath.setAttribute('d', subpath);
+      fragment.appendChild(separatedPath);
+    }
+    path.replaceWith(fragment);
+    separatedPathCount += subpaths.length;
+  }
+  return separatedPathCount;
 }
 
 const TRIANGLE_COLORS = [0x2f7f95, 0x3f9db1, 0x5b93a5, 0x7db7c1, 0x2b6d81, 0x6aaabd, 0x3a879c, 0x8bc4cf];
@@ -261,6 +313,8 @@ function addFeature(feature: RenderFeature): void {
         ? [{ geometry: split?.[selectedFaceMode], facePart: selectedFaceMode, color: colorForPart(selectedFaceMode) }]
         : selectedFaceMode === 'side-triangles'
           ? split?.side ? splitIntoTriangles(split.side).map((triangle, index) => ({ geometry: triangle, facePart: 'side' as const, color: TRIANGLE_COLORS[index % TRIANGLE_COLORS.length] })) : []
+          : selectedFaceMode === 'side-separate-paths'
+            ? [{ geometry: split?.side, facePart: 'side' as const, color: colorForPart('side') }]
           : (['top', 'side', 'bottom'] as const).map((facePart) => ({ geometry: split?.[facePart], facePart, color: colorForPart(facePart) }));
     const usedGeometries = new Set<THREE.BufferGeometry>();
 
@@ -302,9 +356,15 @@ function fitCamera(): void {
 
 function render(): void {
   const start = performance.now();
+  const rendererStart = performance.now();
   renderer.render(scene, camera);
+  svgRendererDuration = performance.now() - rendererStart;
+  const splitStart = performance.now();
+  const separatedPathCount = currentFaceMode() === 'side-separate-paths' ? separateSvgSubpaths(renderer.domElement) : 0;
+  pathSplitDuration = performance.now() - splitStart;
   renderDuration = performance.now() - start;
-  metricsElement.textContent = `${normalized?.features.length ?? 0} feature(s) · ${renderer.info.render.faces} faces · ${renderer.domElement.childElementCount} SVG nodes · ${renderDuration.toFixed(1)} ms last render`;
+  const pathSplitText = currentFaceMode() === 'side-separate-paths' ? ` · same-color paths ${separatedPathCount}` : '';
+  metricsElement.textContent = `${normalized?.features.length ?? 0} feature(s) · ${renderer.info.render.faces} faces · ${renderer.domElement.childElementCount} SVG nodes · ${renderDuration.toFixed(1)} ms total (SVG ${svgRendererDuration.toFixed(1)} ms${currentFaceMode() === 'side-separate-paths' ? `, split ${pathSplitDuration.toFixed(1)} ms` : ''})${pathSplitText}`;
   const summary = summarizeCurrentProjection();
   const paths = Array.from(renderer.domElement.querySelectorAll('path'));
   for (const path of paths) path.setAttribute('fill-rule', fillRuleInput.value);
