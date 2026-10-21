@@ -52,8 +52,13 @@
         <label class="control">CRS <select id="crs"><option value="EPSG:4326">EPSG:4326</option><option value="cartesian">Cartesian</option></select></label>
         <label class="control"><input id="edges" type="checkbox" checked> Edges</label>
         <label class="control">Quality <select id="quality"><option value="high">high</option><option value="low">low</option></select></label>
+        <label class="control">Faces <select id="faceMode"><option value="combined">combined</option><option value="separated">separated top/side/bottom</option><option value="top">top only</option><option value="side">side only</option><option value="bottom">bottom only</option></select></label>
+        <label class="control">Material <select id="materialMode"><option value="double-opaque">Basic / DoubleSide / opaque</option><option value="front-opaque">Basic / FrontSide / opaque</option><option value="double-transparent">Basic / DoubleSide / 50% opacity</option></select></label>
+        <label class="control"><input id="sortElements" type="checkbox" checked> sortElements</label>
+        <label class="control"><input id="sortObjects" type="checkbox" checked> sortObjects</label>
         <span class="hint">Left drag rotate · Right drag pan · Wheel zoom</span>
         <div class="metrics" id="metrics">No render yet.</div>
+        <div class="metrics" id="projection">No projection analysis yet.</div>
       </footer>
     </div>
     <script src="./svg-rendering.js"></script>

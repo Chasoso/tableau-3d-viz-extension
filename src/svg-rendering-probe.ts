@@ -2,8 +2,24 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
 import { normalizeGeometryRows } from './geometry-adapter.js';
+import { projectFaceGeometry, splitExtrusionGeometry, summarizeProjectedFaces, type FacePart, type ProjectionSummary } from './svg-rendering-analysis.js';
 import { createExtrudedGeometries, placeExtrudedGeometry } from './three-geometry-factory.js';
 import type { NormalizedGeometry, RawGeometryRow, RenderFeature, SourceCoordinateSystem } from './geometry-model.js';
+
+type FaceMode = 'combined' | 'separated' | FacePart;
+type MaterialMode = 'double-opaque' | 'front-opaque' | 'double-transparent';
+
+interface ProbePart {
+  mesh: THREE.Mesh;
+  feature: RenderFeature;
+  material: THREE.MeshBasicMaterial;
+  facePart?: FacePart;
+}
+
+interface ProbeEdge {
+  edge: THREE.LineSegments;
+  feature: RenderFeature;
+}
 
 interface FixtureDefinition {
   label: string;
@@ -43,9 +59,14 @@ const heightInput = document.querySelector<HTMLInputElement>('#height');
 const heightText = document.querySelector<HTMLElement>('#heightText');
 const edgesInput = document.querySelector<HTMLInputElement>('#edges');
 const qualitySelect = document.querySelector<HTMLSelectElement>('#quality');
+const faceModeSelect = document.querySelector<HTMLSelectElement>('#faceMode');
+const materialModeSelect = document.querySelector<HTMLSelectElement>('#materialMode');
+const sortElementsInput = document.querySelector<HTMLInputElement>('#sortElements');
+const sortObjectsInput = document.querySelector<HTMLInputElement>('#sortObjects');
+const projection = document.querySelector<HTMLElement>('#projection');
 const resetButton = document.querySelector<HTMLButtonElement>('#reset');
 
-if (!viewport || !status || !selected || !metrics || !fixtureSelect || !crsSelect || !heightInput || !heightText || !edgesInput || !qualitySelect || !resetButton) {
+if (!viewport || !status || !selected || !metrics || !fixtureSelect || !crsSelect || !heightInput || !heightText || !edgesInput || !qualitySelect || !faceModeSelect || !materialModeSelect || !sortElementsInput || !sortObjectsInput || !projection || !resetButton) {
   throw new Error('SVG rendering probe markup is incomplete.');
 }
 
@@ -59,6 +80,11 @@ const heightScaleInput = heightInput;
 const heightTextElement = heightText;
 const edgesToggle = edgesInput;
 const qualityInput = qualitySelect;
+const faceModeInput = faceModeSelect;
+const materialModeInput = materialModeSelect;
+const sortElementsToggle = sortElementsInput;
+const sortObjectsToggle = sortObjectsInput;
+const projectionElement = projection;
 const resetViewButton = resetButton;
 
 const scene = new THREE.Scene();
@@ -68,8 +94,8 @@ const root = new THREE.Group();
 scene.add(root);
 
 const renderer = new SVGRenderer();
-renderer.sortObjects = true;
-renderer.sortElements = true;
+renderer.sortObjects = sortObjectsToggle.checked;
+renderer.sortElements = sortElementsToggle.checked;
 renderer.overdraw = 0.5;
 renderer.setQuality('high');
 renderer.domElement.setAttribute('aria-label', 'Three.js SVG geometry viewer');
@@ -87,12 +113,61 @@ controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-const parts: Array<{ mesh: THREE.Mesh; edge: THREE.LineSegments; feature: RenderFeature; material: THREE.MeshBasicMaterial }> = [];
+const parts: ProbePart[] = [];
+const edgeLines: ProbeEdge[] = [];
 let normalized: NormalizedGeometry | undefined;
 let sourceElevations = new Map<string, number>();
 let heightScale = 2;
 let hoveredId: string | undefined;
 let renderDuration = 0;
+
+const FACE_COLORS: Record<FacePart, number> = { top: 0x3f9db1, side: 0x2f7f95, bottom: 0x7db7c1 };
+
+function currentFaceMode(): FaceMode {
+  return faceModeInput.value as FaceMode;
+}
+
+function currentMaterialMode(): MaterialMode {
+  return materialModeInput.value as MaterialMode;
+}
+
+function materialSide(mode: MaterialMode): THREE.Side {
+  return mode === 'front-opaque' ? THREE.FrontSide : THREE.DoubleSide;
+}
+
+function createMaterial(facePart?: FacePart): THREE.MeshBasicMaterial {
+  const mode = currentMaterialMode();
+  const transparent = mode === 'double-transparent';
+  const color = currentFaceMode() === 'separated' && facePart ? FACE_COLORS[facePart] : 0x3f9db1;
+  return new THREE.MeshBasicMaterial({ color, side: materialSide(mode), transparent, opacity: transparent ? 0.5 : 1 });
+}
+
+function colorForPart(facePart?: FacePart): number {
+  return currentFaceMode() === 'separated' && facePart ? FACE_COLORS[facePart] : 0x3f9db1;
+}
+
+function summarizeCurrentProjection(): ProjectionSummary {
+  const samples = [];
+  for (const part of parts) {
+    if (part.facePart) {
+      samples.push(...projectFaceGeometry(part.mesh.geometry, part.mesh, camera, part.facePart));
+      continue;
+    }
+    const split = splitExtrusionGeometry(part.mesh.geometry);
+    for (const facePart of ['top', 'side', 'bottom'] as const) {
+      const geometry = split[facePart];
+      if (geometry) {
+        samples.push(...projectFaceGeometry(geometry, part.mesh, camera, facePart));
+        geometry.dispose();
+      }
+    }
+  }
+  return summarizeProjectedFaces(samples);
+}
+
+function formatDepth(value: number): string {
+  return Number.isFinite(value) ? value.toPrecision(8) : 'n/a';
+}
 
 function setStatus(message: string, error = false): void {
   statusElement.textContent = message;
@@ -111,8 +186,10 @@ function setSelected(feature?: RenderFeature): void {
 function setHovered(feature?: RenderFeature): void {
   hoveredId = feature?.id;
   for (const part of parts) {
-    part.material.color.setHex(part.feature.id === hoveredId ? 0x1e637e : 0x3f9db1);
-    (part.edge.material as THREE.LineBasicMaterial).color.setHex(part.feature.id === hoveredId ? 0x173b4a : 0xffffff);
+    part.material.color.setHex(part.feature.id === hoveredId ? 0x1e637e : colorForPart(part.facePart));
+  }
+  for (const edgeLine of edgeLines) {
+    (edgeLine.edge.material as THREE.LineBasicMaterial).color.setHex(edgeLine.feature.id === hoveredId ? 0x173b4a : 0xffffff);
   }
   setSelected(feature);
 }
@@ -122,10 +199,13 @@ function clearScene(): void {
   for (const part of parts) {
     part.mesh.geometry.dispose();
     part.material.dispose();
-    part.edge.geometry.dispose();
-    (part.edge.material as THREE.Material).dispose();
+  }
+  for (const edgeLine of edgeLines) {
+    edgeLine.edge.geometry.dispose();
+    (edgeLine.edge.material as THREE.Material).dispose();
   }
   parts.length = 0;
+  edgeLines.length = 0;
   root.clear();
 }
 
@@ -133,19 +213,41 @@ function addFeature(feature: RenderFeature): void {
   const group = new THREE.Group();
   group.userData.featureId = feature.id;
   for (const geometry of createExtrudedGeometries(feature.geometry, feature.elevation)) {
-    const material = new THREE.MeshBasicMaterial({ color: 0x3f9db1, side: THREE.DoubleSide });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.userData.feature = feature;
-    placeExtrudedGeometry(mesh, feature.elevation);
     const edge = new THREE.LineSegments(
       new THREE.EdgesGeometry(geometry),
       new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.82 })
     );
-    edge.position.copy(mesh.position);
     edge.userData.feature = feature;
     edge.visible = edgesToggle.checked;
-    group.add(mesh, edge);
-    parts.push({ mesh, edge, feature, material });
+    edgeLines.push({ edge, feature });
+    group.add(edge);
+
+    const selectedFaceMode = currentFaceMode();
+    const split = selectedFaceMode === 'combined' ? undefined : splitExtrusionGeometry(geometry);
+    const renderParts = selectedFaceMode === 'combined'
+      ? [{ geometry, facePart: undefined }]
+      : selectedFaceMode === 'top' || selectedFaceMode === 'side' || selectedFaceMode === 'bottom'
+        ? [{ geometry: split?.[selectedFaceMode], facePart: selectedFaceMode }]
+        : (['top', 'side', 'bottom'] as const).map((facePart) => ({ geometry: split?.[facePart], facePart }));
+    const usedGeometries = new Set<THREE.BufferGeometry>();
+
+    for (const renderPart of renderParts) {
+      if (!renderPart.geometry) continue;
+      usedGeometries.add(renderPart.geometry);
+      const material = createMaterial(renderPart.facePart);
+      const mesh = new THREE.Mesh(renderPart.geometry, material);
+      mesh.userData.feature = feature;
+      mesh.userData.facePart = renderPart.facePart;
+      placeExtrudedGeometry(mesh, feature.elevation);
+      group.add(mesh);
+      parts.push({ mesh, feature, material, facePart: renderPart.facePart });
+    }
+    if (split) {
+      for (const facePart of ['top', 'side', 'bottom'] as const) {
+        const splitGeometry = split[facePart];
+        if (splitGeometry && !usedGeometries.has(splitGeometry)) splitGeometry.dispose();
+      }
+    }
   }
   root.add(group);
 }
@@ -170,6 +272,11 @@ function render(): void {
   renderer.render(scene, camera);
   renderDuration = performance.now() - start;
   metricsElement.textContent = `${normalized?.features.length ?? 0} feature(s) · ${renderer.info.render.faces} faces · ${renderer.domElement.childElementCount} SVG nodes · ${renderDuration.toFixed(1)} ms last render`;
+  const summary = summarizeCurrentProjection();
+  const paths = Array.from(renderer.domElement.querySelectorAll('path'));
+  const fillPaths = paths.filter((path) => (path.getAttribute('style') ?? '').includes('fill:'));
+  const strokePaths = paths.filter((path) => (path.getAttribute('style') ?? '').includes('stroke:'));
+  projectionElement.textContent = `Projected ${summary.total} triangles · area +${summary.positiveArea}/-${summary.negativeArea}/zero ${summary.zeroArea} · vertices outside clip ${summary.outsideClip} · depth ${formatDepth(summary.depthMin)}..${formatDepth(summary.depthMax)} · SVG paths fill ${fillPaths.length}, stroke ${strokePaths.length} · sortElements ${renderer.sortElements ? 'on' : 'off'}, sortObjects ${renderer.sortObjects ? 'on' : 'off'}`;
 }
 
 function renderFixture(): void {
@@ -233,11 +340,21 @@ heightScaleInput.addEventListener('input', () => {
   renderFixture();
 });
 edgesToggle.addEventListener('change', () => {
-  for (const part of parts) part.edge.visible = edgesToggle.checked;
+  for (const edgeLine of edgeLines) edgeLine.edge.visible = edgesToggle.checked;
   render();
 });
 qualityInput.addEventListener('change', () => {
   renderer.setQuality(qualityInput.value);
+  render();
+});
+faceModeInput.addEventListener('change', renderFixture);
+materialModeInput.addEventListener('change', renderFixture);
+sortElementsToggle.addEventListener('change', () => {
+  renderer.sortElements = sortElementsToggle.checked;
+  render();
+});
+sortObjectsToggle.addEventListener('change', () => {
+  renderer.sortObjects = sortObjectsToggle.checked;
   render();
 });
 resetViewButton.addEventListener('click', () => { controls.reset(); controls.update(); render(); });
