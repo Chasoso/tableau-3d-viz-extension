@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Three.js SVGRenderer Spike</title>
+    <style>
+      :root { color: #293748; font: 12px Inter, "Segoe UI", Arial, sans-serif; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; overflow: hidden; }
+      body { background: #f8fafc; }
+      .shell { display: flex; flex-direction: column; height: 100%; min-width: 520px; }
+      .top, .bottom { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e6ecf1; }
+      .top { justify-content: space-between; }
+      .name { font-weight: 700; }
+      .sub, .status, .hint, .metrics { color: #758695; font-size: 10px; }
+      .workspace { position: relative; min-height: 220px; flex: 1; background: radial-gradient(ellipse at 45% 39%, #fff 0%, #f8fafc 62%, #f1f5f9 100%); }
+      #viewport { position: absolute; inset: 0; }
+      #viewport > svg { cursor: grab; touch-action: none; }
+      #viewport > svg:active { cursor: grabbing; }
+      .inspect, .toolbar { position: absolute; top: 10px; background: #fffffff0; border: 1px solid #e2e9ef; border-radius: 7px; box-shadow: 0 3px 12px #263a460c; }
+      .inspect { left: 10px; min-width: 190px; padding: 8px 10px; }
+      .inspect .label { color: #8796a4; font-size: 9px; text-transform: uppercase; }
+      .inspect .value { margin-top: 4px; font-size: 11px; font-weight: 650; }
+      .toolbar { right: 10px; display: flex; overflow: hidden; }
+      button { min-width: 31px; height: 30px; border: 0; border-right: 1px solid #e2e9ef; background: #fff; color: #607587; cursor: pointer; }
+      button:hover { background: #f1f7f8; color: #167f89; }
+      .status { position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 20px); padding: 5px 7px; background: #ffffffd9; border-radius: 5px; }
+      .status[data-state="error"] { color: #b00020; }
+      .bottom { flex-wrap: wrap; border-top: 1px solid #e6ecf1; border-bottom: 0; }
+      .control { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: #637486; }
+      input[type="range"] { width: 92px; accent-color: #128e98; }
+      select { max-width: 190px; border: 1px solid #dfe7ed; border-radius: 4px; padding: 3px; color: #526676; background: #fff; }
+      .metrics { width: 100%; }
+      .hint { margin-left: auto; }
+      .note { margin: 0; padding: 5px 12px; background: #fffdf2; color: #816d32; border-bottom: 1px solid #eee5c5; font-size: 10px; }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="top"><div><div class="name">Three.js SVGRenderer Spike</div><div class="sub">Extrusion and camera-control feasibility · Three.js r180</div></div><span class="sub">NO WEBGL</span></header>
+      <p class="note">Standalone fixture page. It does not load Tableau API and does not claim SVGRenderer is production-ready.</p>
+      <main class="workspace">
+        <div id="viewport" aria-label="SVG geometry viewport"></div>
+        <div class="inspect"><div class="label">Selected feature</div><div class="value" id="selected">Hover to inspect</div></div>
+        <div class="toolbar"><button id="reset" type="button" title="Reset view" aria-label="Reset view">↺</button></div>
+        <div class="status" id="status" data-state="ok">Loading SVGRenderer probe…</div>
+      </main>
+      <footer class="bottom">
+        <label class="control">Fixture <select id="fixture"><option value="mixed">Mixed Polygon / hole / MultiPolygon</option><option value="elevation">Elevation edge cases</option></select></label>
+        <label class="control">Height <input id="height" type="range" min="0.5" max="5" step="0.5" value="2"><strong id="heightText">2.0×</strong></label>
+        <label class="control">CRS <select id="crs"><option value="EPSG:4326">EPSG:4326</option><option value="cartesian">Cartesian</option></select></label>
+        <label class="control"><input id="edges" type="checkbox" checked> Edges</label>
+        <label class="control">Quality <select id="quality"><option value="high">high</option><option value="low">low</option></select></label>
+        <span class="hint">Left drag rotate · Right drag pan · Wheel zoom</span>
+        <div class="metrics" id="metrics">No render yet.</div>
+      </footer>
+    </div>
+    <script src="./svg-rendering.js"></script>
+  </body>
+</html>

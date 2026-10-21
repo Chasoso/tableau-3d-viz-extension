@@ -47,3 +47,9 @@ Manual Tableau Desktop verification remains required for:
 The attached HTML prototype was not present in the repository; its interaction model was used as the UI reference for this implementation.
 
 The renderer is published as a dependency-bundled, classic IIFE script because Tableau Desktop's embedded WebView must load the extension entrypoint without relying on ES module loading or an import map. If the extension remains on `Loading extension…`, inspect the status area for a script error and verify that the served `extension/geometry-extension.js` is reachable. If it reaches `Connecting to Tableau Extensions API…`, verify that the official Tableau Extensions API script is reachable from the Tableau Desktop environment. The extension reports a missing API script or a 15-second initialization timeout directly in the status area.
+
+## SVGRenderer candidate spike
+
+Because the Tableau Desktop rendering diagnostic observed Canvas 2D and SVG success while WebGL 1 and WebGL 2 context creation failed, an independent Three.js SVGRenderer spike is available at [`diagnostics/svg-rendering.html`](../../diagnostics/svg-rendering.html). It reuses the normalized model, extrusion geometry factory, and OrbitControls boundary without changing the WebGL production entrypoint. It covers two local fixtures, Polygon / hole / MultiPolygon extrusion, elevation cases, edges, hover, reset, rotation, pan, zoom, SVG quality, and a local render-time observation.
+
+This page is a technical investigation only. Tableau Desktop execution, large-data performance, exact occlusion quality after arbitrary camera rotation, and production renderer selection remain `NOT VERIFIED` until evidence is recorded. See the [SVGRenderer spike procedure](../svg-rendering-spike.md) for the manual checklist.
