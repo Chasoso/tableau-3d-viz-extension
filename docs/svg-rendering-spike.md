@@ -67,6 +67,17 @@ The likely mechanism is that SVGRenderer concatenates consecutive faces with the
 
 The additional `fill-rule` comparison does not by itself resolve the symptom: in the elevation fixture, `side only` still emitted one fill path and remained outline-like with `evenodd`, while `side triangles (unique colors)` emitted 16 fill paths and showed filled surfaces with the same projection metrics. This narrows the investigation toward path decomposition/overlap and painter output, rather than a single `fill-rule` setting.
 
+### Tableau Desktop corroboration
+
+On 2026-10-22, a user-provided Tableau Desktop capture reproduced the same distinction in the embedded page. Both captures used the `Elevation edge cases` fixture, Cartesian CRS, `2.0×` height, Edges OFF, `MeshBasicMaterial / DoubleSide / opaque`, high quality, `fill-rule nonzero`, and both sort settings ON.
+
+| Tableau mode | Reported diagnostic | Visual observation |
+| --- | --- | --- |
+| `side triangles (unique colors)` | 16 projected triangles, area `+8/-8/zero 0`, outside clip `0`, side absolute area `2.57e-3..3.19e-2` (mean `1.26e-2`), SVG fill paths `16` | Side surfaces are filled; individual diagnostic colors are visible |
+| `side only` | 16 projected triangles, area `+8/-8/zero 0`, outside clip `0`, side absolute area `3.62e-3..6.39e-2` (mean `2.21e-2`), SVG fill paths `1` | Long side surfaces are mostly line-like while end faces remain visible |
+
+The two screenshots were taken at different camera states, so they are not a strict frame-identical A/B comparison. They nevertheless corroborate the controlled browser comparison: the side triangles exist, have non-zero projected area, and are visible when SVG output is split into separate paths, while the one-path form reproduces the reported loss in Tableau Desktop. The Tableau evidence does not establish production readiness or acceptable performance.
+
 The projection panel reports 34 positive and 34 negative signed triangle areas for the mixed fixture at the initial view and 16 positive / 12 negative areas for the elevation fixture at the isolated view. These are diagnostic projections, not a claim that every triangle is visibly unobscured. The SVGRenderer source uses Projector painter sorting and accumulates adjacent faces with the same style into a single SVG path; it does not provide a WebGL depth buffer. The exact contribution of path winding cancellation versus camera-dependent occlusion is therefore a renderer limitation hypothesis, while the combined-versus-separated visual difference is an observed result.
 
 ### Current recommendation
