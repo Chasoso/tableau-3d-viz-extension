@@ -170,4 +170,3 @@ export function normalizeGeometryRows(
     warnings: parsed.some((row) => row.elevation === 0) ? ['Missing elevation values were rendered at zero meters.'] : []
   };
 }
-
