@@ -71,4 +71,4 @@ interface GeometryAdapter {
 }
 ```
 
-`rings`の厳密な次元、外輪・穴の向き、座標系、欠損値、集約行の扱いは、Issue #4の入力検証で確定する。これはThree.jsのAPIや描画仕様ではない。
+`rings`はGeometry Adapterが検証した後の構造であり、レンダラーへ渡す時点では`coordinateSystem: 'local-meters'`とする。EPSG:4326からの局所メートル変換、欠損・負値の扱い、描画操作は[SPEC-002](../specifications/SPEC-002-3d-rendering.md)に定義する。これはThree.jsのAPIやTableauの生データ形式そのものではない。

@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rendering API Diagnostic</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: #f7f9fc;
+        color: #172033;
+      }
+      body { max-width: 1100px; margin: 0 auto; padding: 1rem; }
+      h1 { margin: 0 0 0.35rem; font-size: 1.55rem; }
+      p { margin: 0.35rem 0 0.8rem; }
+      .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+      button { border: 1px solid #9aa8bf; border-radius: 0.35rem; background: white; padding: 0.45rem 0.75rem; cursor: pointer; }
+      button:hover { background: #eef3fb; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.8rem; }
+      .card { border: 1px solid #cbd4e2; border-radius: 0.5rem; background: white; padding: 0.8rem; }
+      .card h2 { margin: 0; font-size: 1rem; }
+      .result { margin: 0.45rem 0; font-weight: 700; }
+      .result[data-state="success"] { color: #137333; }
+      .result[data-state="unavailable"], .result[data-state="error"] { color: #b3261e; }
+      .result[data-state="not-run"] { color: #5f6368; }
+      canvas, svg { display: block; width: 100%; max-width: 360px; height: 150px; margin-top: 0.6rem; border: 1px solid #d7deea; background: #fbfcff; }
+      svg { height: 148px; }
+      pre { max-height: 340px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: #172033; color: #e7edf8; border-radius: 0.5rem; padding: 0.8rem; }
+      .note { font-size: 0.9rem; color: #4d5a70; }
+      .events { min-height: 1.2rem; font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; }
+      code { background: #edf1f7; padding: 0.1rem 0.25rem; border-radius: 0.2rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Rendering API Diagnostic</h1>
+    <p>This page tests Canvas 2D, WebGL 1, WebGL 2, and SVG independently. It does not load Tableau Extensions API or Three.js, and it does not send diagnostic data anywhere.</p>
+    <p class="note">The results describe this browsing context only. A successful Chrome result does not establish that the same API is available inside Tableau Desktop.</p>
+
+    <div class="toolbar">
+      <button id="run" type="button">Run diagnostics</button>
+      <button id="copy" type="button">Copy JSON report</button>
+      <button id="download" type="button">Download JSON report</button>
+    </div>
+
+    <section class="grid" aria-label="Rendering API results">
+      <article class="card">
+        <h2>Canvas 2D</h2>
+        <div id="canvas-2d-result" class="result" data-state="not-run">Not run</div>
+        <div id="canvas-2d-events" class="events"></div>
+        <canvas id="canvas-2d" width="360" height="150" aria-label="Canvas 2D sample"></canvas>
+      </article>
+      <article class="card">
+        <h2>WebGL 1</h2>
+        <div id="webgl-1-result" class="result" data-state="not-run">Not run</div>
+        <div id="webgl-1-events" class="events"></div>
+        <canvas id="webgl-1" width="360" height="150" aria-label="WebGL 1 sample"></canvas>
+      </article>
+      <article class="card">
+        <h2>WebGL 2</h2>
+        <div id="webgl-2-result" class="result" data-state="not-run">Not run</div>
+        <div id="webgl-2-events" class="events"></div>
+        <canvas id="webgl-2" width="360" height="150" aria-label="WebGL 2 sample"></canvas>
+      </article>
+      <article class="card">
+        <h2>SVG</h2>
+        <div id="svg-result" class="result" data-state="not-run">Not run</div>
+        <div id="svg-events" class="events"></div>
+        <svg id="svg-output" viewBox="0 0 360 150" role="img" aria-label="SVG sample"></svg>
+      </article>
+    </section>
+
+    <h2>Browser and context information</h2>
+    <pre id="report" aria-live="polite">Run diagnostics to collect local evidence.</pre>
+
+    <script>
+      (function () {
+        'use strict';
+
+        var report = { collectedAt: null, browser: {}, checks: {}, events: [], note: 'Local diagnostic only. No data is transmitted.' };
+
+        function byId(id) { return document.getElementById(id); }
+
+        function setResult(id, state, message, details) {
+          var element = byId(id + '-result');
+          element.dataset.state = state;
+          element.textContent = message;
+          byId(id + '-events').textContent = details || '';
+        }
+
+        function recordEvent(label, event) {
+          var message = event && event.statusMessage ? event.statusMessage : 'webglcontextcreationerror received';
+          report.events.push({ label: label, message: message });
+          return message;
+        }
+
+        function shader(gl, type, source) {
+          var item = gl.createShader(type);
+          if (!item) throw new Error('createShader returned null');
+          gl.shaderSource(item, source);
+          gl.compileShader(item);
+          if (!gl.getShaderParameter(item, gl.COMPILE_STATUS)) {
+            var compileError = gl.getShaderInfoLog(item) || 'unknown shader compilation error';
+            gl.deleteShader(item);
+            throw new Error(compileError);
+          }
+          return item;
+        }
+
+        function drawTriangle(gl, isWebGL2) {
+          var vertexSource = isWebGL2
+            ? '#version 300 es\nin vec2 position;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); }'
+            : 'attribute vec2 position;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); }';
+          var fragmentSource = isWebGL2
+            ? '#version 300 es\nprecision mediump float;\nout vec4 color;\nvoid main() { color = vec4(0.08, 0.45, 0.72, 1.0); }'
+            : 'precision mediump float;\nvoid main() { gl_FragColor = vec4(0.08, 0.45, 0.72, 1.0); }';
+          var vertex = shader(gl, gl.VERTEX_SHADER, vertexSource);
+          var fragment = shader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+          var program = gl.createProgram();
+          if (!program) throw new Error('createProgram returned null');
+          gl.attachShader(program, vertex);
+          gl.attachShader(program, fragment);
+          gl.linkProgram(program);
+          if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error(gl.getProgramInfoLog(program) || 'unknown program link error');
+          }
+          var buffer = gl.createBuffer();
+          if (!buffer) throw new Error('createBuffer returned null');
+          gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-0.75, -0.65, 0.75, -0.65, 0, 0.75]), gl.STATIC_DRAW);
+          var position = gl.getAttribLocation(program, 'position');
+          if (position < 0) throw new Error('position attribute was not found');
+          gl.useProgram(program);
+          gl.enableVertexAttribArray(position);
+          gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+          gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+          gl.clearColor(0.98, 0.99, 1, 1);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.finish();
+          var drawError = gl.getError();
+          if (drawError !== gl.NO_ERROR) throw new Error('draw error 0x' + drawError.toString(16));
+          gl.deleteBuffer(buffer);
+          gl.deleteProgram(program);
+          gl.deleteShader(vertex);
+          gl.deleteShader(fragment);
+        }
+
+        function webglInfo(gl) {
+          var info = {
+            version: gl.getParameter(gl.VERSION),
+            shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+            vendor: gl.getParameter(gl.VENDOR),
+            renderer: gl.getParameter(gl.RENDERER)
+          };
+          var debug = gl.getExtension('WEBGL_debug_renderer_info');
+          if (debug) {
+            info.unmaskedVendor = gl.getParameter(debug.UNMASKED_VENDOR_WEBGL);
+            info.unmaskedRenderer = gl.getParameter(debug.UNMASKED_RENDERER_WEBGL);
+          }
+          return info;
+        }
+
+        function runWebGL(id, contextName, isWebGL2) {
+          var canvas = byId(id);
+          var creationEvents = [];
+          canvas.addEventListener('webglcontextcreationerror', function (event) {
+            creationEvents.push(recordEvent(contextName, event));
+          });
+          var gl = null;
+          var error = null;
+          try {
+            gl = canvas.getContext(contextName, { antialias: false, preserveDrawingBuffer: true });
+          } catch (contextError) {
+            error = String(contextError && contextError.message ? contextError.message : contextError);
+          }
+          if (!gl) {
+            var message = creationEvents.length ? creationEvents.join('\n') : (error || 'getContext returned null');
+            report.checks[id] = { status: 'unavailable', context: contextName, error: message, webglContextCreationEvents: creationEvents };
+            setResult(id, 'unavailable', 'UNAVAILABLE: ' + message, 'No context was returned.');
+            return;
+          }
+          try {
+            drawTriangle(gl, isWebGL2);
+            report.checks[id] = { status: 'success', context: contextName, info: webglInfo(gl), webglContextCreationEvents: creationEvents };
+            setResult(id, 'success', 'SUCCESS: context created and triangle drawn', JSON.stringify(webglInfo(gl)));
+          } catch (drawError) {
+            var drawMessage = String(drawError && drawError.message ? drawError.message : drawError);
+            report.checks[id] = { status: 'error', context: contextName, error: drawMessage, info: webglInfo(gl), webglContextCreationEvents: creationEvents };
+            setResult(id, 'error', 'ERROR: ' + drawMessage, JSON.stringify(webglInfo(gl)));
+          }
+        }
+
+        function runCanvas2D() {
+          var canvas = byId('canvas-2d');
+          var ctx = null;
+          try { ctx = canvas.getContext('2d'); } catch (error) {
+            report.checks.canvas2d = { status: 'error', error: String(error) };
+          }
+          if (!ctx) {
+            report.checks.canvas2d = report.checks.canvas2d || { status: 'unavailable', error: 'getContext returned null' };
+            setResult('canvas-2d', 'unavailable', 'UNAVAILABLE: 2D context was not returned', 'getContext("2d") returned null.');
+            return;
+          }
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#e8f1fb';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.beginPath();
+          ctx.moveTo(180, 20);
+          ctx.lineTo(320, 125);
+          ctx.lineTo(40, 125);
+          ctx.closePath();
+          ctx.fillStyle = '#1672b8';
+          ctx.fill();
+          ctx.strokeStyle = '#0b3e65';
+          ctx.lineWidth = 4;
+          ctx.stroke();
+          report.checks.canvas2d = { status: 'success', context: '2d' };
+          setResult('canvas-2d', 'success', 'SUCCESS: context created and shape drawn', 'CanvasRenderingContext2D');
+        }
+
+        function runSvg() {
+          var svg = byId('svg-output');
+          while (svg.firstChild) svg.removeChild(svg.firstChild);
+          var polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+          polygon.setAttribute('points', '180,20 320,125 40,125');
+          polygon.setAttribute('fill', '#1672b8');
+          polygon.setAttribute('stroke', '#0b3e65');
+          polygon.setAttribute('stroke-width', '4');
+          svg.appendChild(polygon);
+          var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.setAttribute('x', '180');
+          label.setAttribute('y', '142');
+          label.setAttribute('text-anchor', 'middle');
+          label.textContent = 'SVG';
+          svg.appendChild(label);
+          report.checks.svg = { status: 'success', context: 'SVG DOM' };
+          setResult('svg', 'success', 'SUCCESS: SVG elements created', 'SVG polygon and text node appended.');
+        }
+
+        function collectBrowserInfo() {
+          report.browser = {
+            userAgent: navigator.userAgent,
+            platform: navigator.platform,
+            vendor: navigator.vendor,
+            language: navigator.language,
+            cookieEnabled: navigator.cookieEnabled,
+            onLine: navigator.onLine,
+            secureContext: window.isSecureContext,
+            location: window.location.href,
+            devicePixelRatio: window.devicePixelRatio,
+            viewport: { width: window.innerWidth, height: window.innerHeight },
+            userAgentData: navigator.userAgentData ? {
+              brands: navigator.userAgentData.brands,
+              mobile: navigator.userAgentData.mobile,
+              platform: navigator.userAgentData.platform
+            } : null
+          };
+        }
+
+        function run() {
+          report = { collectedAt: new Date().toISOString(), browser: {}, checks: {}, events: [], note: 'Local diagnostic only. No data is transmitted.' };
+          collectBrowserInfo();
+          runCanvas2D();
+          runWebGL('webgl-1', 'webgl', false);
+          runWebGL('webgl-2', 'webgl2', true);
+          runSvg();
+          byId('report').textContent = JSON.stringify(report, null, 2);
+        }
+
+        function copyReport() {
+          var text = JSON.stringify(report, null, 2);
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () { byId('copy').textContent = 'Copied'; }, function () { window.prompt('Copy diagnostic JSON', text); });
+          } else {
+            window.prompt('Copy diagnostic JSON', text);
+          }
+        }
+
+        function downloadReport() {
+          var blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+          var url = URL.createObjectURL(blob);
+          var link = document.createElement('a');
+          link.href = url;
+          link.download = 'rendering-diagnostic.json';
+          link.click();
+          URL.revokeObjectURL(url);
+        }
+
+        byId('run').addEventListener('click', run);
+        byId('copy').addEventListener('click', copyReport);
+        byId('download').addEventListener('click', downloadReport);
+        run();
+      }());
+    </script>
+  </body>
+</html>

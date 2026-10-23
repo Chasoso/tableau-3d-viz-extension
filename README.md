@@ -4,8 +4,8 @@ A work-in-progress [Tableau Viz Extension](https://tableau.github.io/extensions-
 
 Tableauで読み込んだ空間データを、ワークシート上で回転・ズーム・パンできる3Dマップとして表示することを目指すプロジェクトです。生成AIを**開発に活用**して、Tableau標準では難しい表現を追加できることを示します。拡張機能にAI機能を組み込むことは目的ではありません。
 
-> **Status: Planning / Technical feasibility investigation**  
-> 現在は構想・技術検証段階です。ShapefileのGeometryをViz Extension API経由で復元できるかは**未検証**であり、Shapefileを読み込むだけで3D化できることは、まだ保証されていません。
+> **Status: Phase 1 prototype / Technical feasibility investigation**
+> Geometry取得診断とThree.js描画プロトタイプを提供しています。Tableauの任意のShapefileを追加変換なしで3D化できること、座標系・Geometry形式の完全互換性は、まだ保証されていません。
 
 ## Goal
 
@@ -27,7 +27,7 @@ Tableauで読み込んだ空間データを、ワークシート上で回転・�
 | Rendering engine | Three.js (candidate) |
 | Hosting | Amazon S3 + CloudFront (HTTPS static hosting) |
 
-高さは数値フィールドから設定します。地理座標をメートル系の描画座標へ変換し、水平・垂直方向の単位を揃えたうえで高さの強調倍率を適用する想定です。単純なポリゴン押し出し（2.5D）がMVPの対象であり、DEMからの滑らかな地形復元は対象外です。
+高さは数値フィールドから設定します。地理座標をメートル系の描画座標へ変換し、水平・垂直方向の単位を揃えたうえで高さの強調倍率を適用する想定です。高さ0は有効な値として平面表示し、null・undefined・空文字だけを欠損として0mに描画して警告します。その他の不正な高さはエラーとします。単純なポリゴン押し出し（2.5D）がMVPの対象であり、DEMからの滑らかな地形復元は対象外です。
 
 ## Main technical risk: accessing Geometry
 
@@ -43,14 +43,15 @@ TableauでShapefileを開けることと、Viz Extensionが**Polygonの頂点・
 
 調査結果が出るまで、Geometryの取得方式は確定しません。
 
-## Planned architecture
+## Current prototype architecture
 
 ```text
 Tableau Desktop / Tableau worksheet
   └── Viz Extension (.trex)
        └── Static web application (HTML / CSS / JavaScript)
             ├── Tableau Viz Extensions API
-            ├── Geometry adapter (subject to feasibility validation)
+            ├── Tableau Geometry source
+            ├── Geometry adapter (validated local-meter intermediate model)
             └── Three.js 3D renderer
 
 CloudFront (HTTPS)
@@ -72,7 +73,7 @@ AWSは静的アセットの配信にのみ使用する予定です。Lambda、AP
 
 ## Development status
 
-実装・インストール手順・デモ環境は今後追加します。現段階では完成済みの拡張機能や動作保証はありません。
+Phase 0の診断拡張と、Phase 1のThree.js描画プロトタイプを実装しています。Tableau Desktopでの実機動作、任意のShapefile対応、座標系と標高単位の自動判定は未検証です。
 
 ## Project documentation
 
@@ -81,8 +82,11 @@ AWSは静的アセットの配信にのみ使用する予定です。Lambda、AP
 - [Development workflow](docs/development-workflow.md) — IssueからPRまでの作業手順
 - [Phase 0 Geometry retrieval specification](docs/specifications/SPEC-001-geometry-retrieval.md) — 実機検証の手順と判定基準
 - [Phase 0 local verification](docs/phase-0-local-verification.md) — 診断拡張のビルド・fixture生成・Tableau Desktop操作
+- [Rendering API diagnostic](docs/webgl-rendering-diagnostic.md) — ChromeとTableau Desktop内のCanvas 2D / WebGL 1 / WebGL 2 / SVG比較
+- [SVGRenderer spike](docs/svg-rendering-spike.md) — Three.js SVGRendererによるWebGL不要の描画検証ページ
 - [SPEC-001 report template](docs/reports/SPEC-001-geometry-retrieval-report.md) — 実機証跡と判定の記録用テンプレート
 - [ADR-001 Geometry supply](docs/adr/ADR-001-geometry-supply.md) — 直接取得を第一候補とする条件付き設計判断
+- [SPEC-002 3D rendering](docs/specifications/SPEC-002-3d-rendering.md) — Polygon / MultiPolygon描画、座標・高さ・操作仕様
 - [Repository development rules](AGENTS.md) — 作業ツリー、検証、コミット、PRのルール
 
 ## References

@@ -5,18 +5,23 @@
   "version": "0.1.0",
   "description": "Phase 0 diagnostic Viz Extension for inspecting Tableau worksheet data and spatial columns.",
   "scripts": {
-    "build": "tsc",
-    "check": "npm run build && npm test && node scripts/validate-manifest.mjs",
+    "build": "tsc && esbuild src/geometry-extension.ts --bundle --format=iife --global-name=GeometryExtension --platform=browser --outfile=extension/geometry-extension.js && esbuild src/svg-rendering-probe.ts --bundle --format=iife --global-name=SvgRenderingProbe --platform=browser --outfile=diagnostics/svg-rendering.js",
+    "check": "npm run build && npm test && node scripts/validate-manifest.mjs && node scripts/validate-rendering-diagnostic.mjs && node scripts/validate-svg-rendering.mjs",
     "fixture": "node scripts/generate-fixture.mjs",
     "lint": "tsc --noEmit",
     "serve": "http-server . -p 8765 -c-1",
     "test": "node --test"
   },
   "devDependencies": {
+    "@mapbox/shp-write": "^0.4.3",
     "@tableau/extensions-api-types": "1.17.0",
+    "@types/three": "^0.180.0",
+    "esbuild": "^0.28.2",
     "fast-xml-parser": "^5.2.5",
     "http-server": "^14.1.1",
-    "@mapbox/shp-write": "^0.4.3",
     "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
   }
 }
